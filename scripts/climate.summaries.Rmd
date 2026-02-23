@@ -19,9 +19,17 @@ climate <- climate %>%
 # scaling the climate variables
 climate_scale <- climate %>% 
   select(1, c(ends_with("tot.precip"), ends_with(".temp")))
+original_stats <- climate_scale %>%
+  select(where(is.numeric)) %>%
+  summarise(across(everything(),
+      list(mean = ~mean(.x, na.rm = TRUE), sd   = ~sd(.x, na.rm = TRUE))))%>%
+  pivot_longer(everything(),
+                      names_to = c("variable", ".value"),
+                      names_sep = "_")
 
 j <- sapply(climate_scale, is.numeric)
 climate_scale[j] <- scale(climate_scale[j])
+
 climate_scale <- climate_scale %>% 
     mutate_if(is.numeric, round, 3)
 remove(j)
@@ -64,7 +72,7 @@ real <- climate %>%
   scale_color_manual(values = c("red", "grey40", "deepskyblue", "blue4"))+
   labs(x = "", y = "Scaled climate", color = ""))
 
-ggsave(plot = scal, "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/Figures/climate/scaled.line.png", width = 10, height = 8)
+ggsave(plot = scal, here("Figures", "climate", "scaled.line.png"), width = 10, height = 8)
 ```
 
 ```{r historical climate}
@@ -107,7 +115,7 @@ PPT_sp <- longterm$PPT_sp[[1]]
 
 (raw_climate <- temp+precip+ plot_layout(guides = "collect") & theme(legend.position = 'bottom'))
 
-ggsave(plot = raw_climate, "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/Figures/climate/raw values.png", width = 15, height = 8)
+ggsave(plot = raw_climate, here("Figures", "climate", "raw values.png"), width = 15, height = 8)
 
 ```
 
@@ -115,12 +123,54 @@ ggsave(plot = raw_climate, "C:/Users/Jenna/OneDrive - The University Of British 
 
 (hist <- ggplot(climate_long, aes(x = value, fill = measurement)) +
   geom_histogram(binwidth = 1, color = "black")+
-  facet_grid(season ~ measurement, scales = "free") +
+  facet_grid(season ~ measurement) +
   theme_bw(base_size = 18) +
     scale_fill_manual(values = c("red", "grey40", "deepskyblue", wes_palettes$Darjeeling2[2]))+
   labs(x = "standardized climate", fill = ""))
-ggsave(plot = hist, "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/Figures/climate/histogram.png", width = 8, height = 8)
+ggsave(plot = hist, here("Figures", "climate", "histogram.png"), width = 8, height = 8)
 
 ```
 
+```{r}
+cor.data <- climate_scale %>%
+  select(where(is.numeric)) %>% 
+  drop_na()
+cor_mat <- climate_scale %>%
+  select(where(is.numeric)) %>%
+  cor(use = "pairwise.complete.obs")
+
+cor_mat
+cor_mat %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("var1") %>%
+  pivot_longer(-var1, names_to = "var2", values_to = "cor") %>%
+  filter(var1 != var2, abs(cor) > 0.7) %>%
+  arrange(desc(abs(cor)))
+corrplot::corrplot(cor_mat, method = "color")
+
+#MAKE CORRELATION MATRIX
+M<-cor(cor.data[,-1])
+res1 <- cor.mtest(cor.data[,-1], conf.level = 0.95)
+ord <- corrMatOrder(M, order = "AOE")
+
+png(here("Figures", "climate", "corrplot.png"), width = 1500, height = 1500, res = 150)
+corrplot(M, p.mat = res1$p, method="circle",type="upper",insig = "p-value", sig.level=-1) #to show all p values set sig.level = -1, to show insig ones set to 0.05
+dev.off()
+#where p<0./05 there is a significant linear correlation
+
+png(here("Figures", "climate", "corrscatter.png"), width = 1500, height = 1500, res = 150)
+pairs(climate_scale[,-1], upper.panel = NULL, pch = 20, cex = 1.5)
+dev.off()
+
+#variables that are correlated: 
+#- min, mean, and max winter temp --> use winter mean
+# summer mean and max temp
+# summer mean and min temp --> use summer max and min (not correlated)
+# spring mean and max temp
+#spring mean and min temp
+#spring min and max --> use spring mean temp
+#fall min and mean temp --> fall mean and max temp
+#summer max temp and summer precip --> p=0.05
+
+```
 
