@@ -1,0 +1,126 @@
+---
+title: "cowichan_climate"
+author: "JL"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+library(here)
+library(tidyverse)
+library(patchwork)
+theme_set(theme_classic(base_size = 18)) #for ggplot
+```
+
+```{r}
+climate <- read.csv(here("clean_data", "CGOP_climatevalues.csv"))
+climate <- climate %>% 
+  mutate(year = as.character(year))
+# scaling the climate variables
+climate_scale <- climate %>% 
+  select(1, c(ends_with("tot.precip"), ends_with(".temp")))
+
+j <- sapply(climate_scale, is.numeric)
+climate_scale[j] <- scale(climate_scale[j])
+climate_scale <- climate_scale %>% 
+    mutate_if(is.numeric, round, 3)
+remove(j)
+
+
+climate_long <- climate_scale %>%
+  pivot_longer(cols = -year, names_to = "variable", values_to = "value") %>%
+  mutate(season = str_extract(variable, "^[^.]+"),
+    measurement = case_when(
+      str_detect(variable, "precip") ~ "precip",
+      str_detect(variable, "min\\.temp") ~ "min temp",
+      str_detect(variable, "max\\.temp") ~ "max temp",
+      str_detect(variable, "mean\\.temp") ~ "mean temp")) %>%
+  select(year, season, measurement, value)%>%
+  mutate(season = factor(season,
+                         levels = c("spring", "summer", "fall", "winter")))
+
+real <- climate %>%
+  pivot_longer(cols = -year, names_to = "variable", values_to = "value") %>%
+  mutate(season = str_extract(variable, "^[^.]+"),
+    measurement = case_when(
+      str_detect(variable, "precip") ~ "precip",
+      str_detect(variable, "min\\.temp") ~ "min temp",
+      str_detect(variable, "max\\.temp") ~ "max temp",
+      str_detect(variable, "mean\\.temp") ~ "mean temp")) %>%
+  select(year, season, measurement, value)%>%
+  mutate(season = factor(season,
+                         levels = c("spring", "summer", "fall", "winter")))
+```
+
+```{r}
+(scal <- climate_long %>% 
+  ggplot(aes(x = year, y = value, group = interaction(season, measurement), color = measurement))+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey80") +
+  geom_line()+  
+  theme_bw(base_size = 18) +
+  facet_wrap(~season)+
+   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+             strip.background = element_rect(fill = "white"))+
+  scale_color_manual(values = c("red", "grey40", "deepskyblue", "blue4"))+
+  labs(x = "", y = "Scaled climate", color = ""))
+
+ggsave(plot = scal, "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/Figures/climate/scaled.line.png", width = 10, height = 8)
+```
+
+```{r historical climate}
+# read in data from ClimateNA (long term averages)
+longterm <- read.csv("C:/Users/Jenna/Dropbox/Williams' Lab/Cowichan IDE/LoggerData/ClimateNA/ClimateNA_CGOP_ClimateData.csv")
+#the variables I want here are:
+## Tave_sp	spring mean temperature (°C)
+##  	Tmax_sp	spring mean maximum temperature (°C)
+## Tmin_sp	spring mean minimum temperature (°C)
+##  	PPT_sp	spring precipitation (mm)
+## MAP	mean annual precipitation (mm)
+## they define spring as MArch, April, and May
+longterm <- longterm %>% 
+  dplyr::select(period, Tave_sp, Tmax_sp, Tmin_sp, PPT_sp, MAP, Tave_sm, Tmax_sm, Tmin_sm, PPT_sm,Tave_wt, Tmax_wt, Tmin_wt, PPT_wt, Tave_at, Tmax_at, Tmin_at, PPT_at)
+
+PPT_sp <- longterm$PPT_sp[[1]]
+
+(precip <- real %>% filter(measurement == "precip") %>% 
+    ggplot(aes(x = year, y = value))+
+  geom_col(fill = wes_palettes$Darjeeling2[2], color = "black")+
+  labs(y = "Total precipitation (mm)", x = "Year")+
+  #geom_hline(yintercept = PPT_sp, linetype='dashed')+
+  #annotate("text", x = "2024", y = PPT_sp, label = "1961-1990 Spring Precip", vjust = -0.5)+
+  #scale_y_continuous(expand = c(0,0), n.breaks = 15)+
+  theme_bw(base_size = 18) +
+  facet_wrap(~season)+
+   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+             strip.background = element_rect(fill = "white")))
+
+(temp <- real %>% filter(measurement != "precip") %>% 
+  ggplot(aes(x = year, y = value, group = measurement, color = measurement)) + 
+  geom_line()+
+  labs(y = "Temperature (C)", x = "Year", color = "")+
+  theme(legend.position="none")+
+  scale_color_manual(values = c("red", "grey40", "deepskyblue")) +
+  theme_bw(base_size = 18) +
+  facet_wrap(~season)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+             strip.background = element_rect(fill = "white")))
+
+(raw_climate <- temp+precip+ plot_layout(guides = "collect") & theme(legend.position = 'bottom'))
+
+ggsave(plot = raw_climate, "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/Figures/climate/raw values.png", width = 15, height = 8)
+
+```
+
+```{r histograms}
+
+(hist <- ggplot(climate_long, aes(x = value, fill = measurement)) +
+  geom_histogram(binwidth = 1, color = "black")+
+  facet_grid(season ~ measurement, scales = "free") +
+  theme_bw(base_size = 18) +
+    scale_fill_manual(values = c("red", "grey40", "deepskyblue", wes_palettes$Darjeeling2[2]))+
+  labs(x = "standardized climate", fill = ""))
+ggsave(plot = hist, "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/Figures/climate/histogram.png", width = 8, height = 8)
+
+```
+
+
