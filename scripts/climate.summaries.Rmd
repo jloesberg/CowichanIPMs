@@ -126,7 +126,8 @@ ggsave(plot = raw_climate, here("Figures", "climate", "raw values.png"), width =
   facet_grid(season ~ measurement) +
   theme_bw(base_size = 18) +
     scale_fill_manual(values = c("red", "grey40", "deepskyblue", wes_palettes$Darjeeling2[2]))+
-  labs(x = "standardized climate", fill = ""))
+  labs(x = "standardized climate", fill = "")+
+   theme(strip.background = element_rect(fill = "white")))
 ggsave(plot = hist, here("Figures", "climate", "histogram.png"), width = 8, height = 8)
 
 ```
@@ -166,9 +167,8 @@ dev.off()
 #- min, mean, and max winter temp --> use winter mean
 # summer mean and max temp
 # summer mean and min temp --> use summer max and min (not correlated)
-# spring mean and max temp
-#spring mean and min temp
-#spring min and max --> use spring mean temp
+# spring mean, min, and max temp--> use spring mean temp
+
 #fall min and mean temp --> fall mean and max temp
 #summer max temp and summer precip --> p=0.05
 
