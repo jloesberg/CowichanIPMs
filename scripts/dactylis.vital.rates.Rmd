@@ -38,6 +38,101 @@ dac <- dac %>%
   filter(!(Plot %in% c("4", "5", "15")))
 ```
 
+
+```{r}
+base <- lmer(log.no.stemsT1 ~ log.no.stems*as.numeric(Year) + (1|Plot), data = dac, REML = F)
+base2 <- lmer(log.no.stemsT1 ~ log.no.stems+as.numeric(Year) + (1|Plot), data = dac, REML = F)
+a1 <- anova(base, base2, test="LRT") #LRT test - removing 2 way interaction does not significantly change model
+base3 <- lmer(log.no.stemsT1 ~ log.no.stems+ (1|Plot), data = dac, REML = F)
+a2 <- anova(base3, base2, test="LRT") #yes year is significant
+best.growth <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Year) + (1|Plot), data = dac, REML = F)
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best.growth)$Year),
+  var = "year") %>% 
+  mutate(year = as.numeric(year))
+  # $Year
+#      (Intercept)
+# 2016  -0.3548889
+# 2017  -0.2427253
+# 2018  -0.1011835
+# 2019   0.1779538
+# 2020   0.2225865
+# 2021  -0.2463669
+# 2022   0.2246864
+# 2023  -0.2343154
+# 2024   0.5542534
+# 
+grow.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+names(grow.corr)[names(grow.corr) == "(Intercept)"] <- "int"
+cor_matrix <- cor(grow.corr)
+correlations <- cor_matrix[,"int"]
+
+# Optional: remove int itself
+correlations <- correlations[names(correlations) != "int"]
+
+# Step 5: Sort by absolute strength
+correlations_sorted <- sort(correlations, decreasing = TRUE)
+###
+vars <- names(grow.corr)[names(grow.corr) != "int"]
+
+# Compute correlations and p-values
+cor_results <- lapply(vars, function(v) {
+  test <- cor.test(grow.corr$int, grow.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+cor_results <- cor_results[order(-abs(cor_results$correlation)), ]
+
+cor_results
+
+g1 <- 
+
+```
+
+
+```{r ground truthing lambda}
+lam <- dac %>%
+ # filter(Xcoor < 10) %>%
+  mutate(Year = as.numeric(as.character(Year))) %>%  # fix ordering
+  group_by(Year, Plot) %>%
+  summarise(
+    n = sum(survT == 1, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(Plot, Year) %>%
+  group_by(Plot) %>%
+  mutate(
+    lambda = lead(n) / n
+  ) %>%
+  ungroup()
+(lambda <- ggplot(lam, aes(x = as.character(Year), y = lambda, color = Plot)) +
+  geom_line(aes(group = Plot), alpha = 0.5) +
+  geom_point() +
+  geom_hline(yintercept = 1)+
+  labs(x = "Year", y = expression(lambda)) +
+  theme_minimal())
+(n <- ggplot(lam, aes(x = as.character(Year), y = n, color = Plot)) +
+  geom_line(aes(group = Plot), alpha = 0.5) +
+  geom_point() +
+  labs(x = "Year", y = "Number of plants") +
+  theme_minimal())
+(to <- lambda/n +plot_layout(guides = "collect")
+)
+ggsave(here("Figures", "Dactylis", "groundtruth.lambda.png"), plot = to, width = 8, height =6)
+
+```
+
+
 ```{r Sample Plots}
 #sample plots
 dac %>% ggplot(aes(x = log.no.stems, y = log.no.stemsT1, color = trt))+
@@ -120,8 +215,6 @@ AIC(size.test1, size.test2)
 #first one
 
 ```
-
-
 ```{r growth model selection}
 gm.base.size <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Plot) + (1|Year), data = dac, REML = F)
 gm.base.trt <- lmer(log.no.stemsT1 ~ log.no.stems+ trt + (1|Plot) + (1|Year), data = dac, REML = F)
@@ -195,22 +288,89 @@ AIC.save$vitalrate <- "growth"
 summary(gm.summer.p)
 ```
 
+```{r growth model selection}
+gm.base.size <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.base.trt <- lmer(log.no.stemsT1 ~ log.no.stems+ trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.base.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+
+#grow season ave temp
+gm.gs.av.temp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.gs.av.temp.int <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.gs.av.temp.trt <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.gs.av.temp.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.gs.av.temp.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.gs.av.temp.trt.int3 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+
+#summer av temp
+gm.summer.av.temp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.av.temp.int <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp + summer.tot.precip+  (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.av.temp.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip +spring.mean.min.temp+  (1|Plot) + (1|Year), data = dac, REML = F)
+
+gm.summer.av.temp.trt <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.av.temp.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp + trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.av.temp.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp*trt +summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.av.temp.trt.int3 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp*trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+
+#summer precip
+gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.int <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int3 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+#.prev.summer precip
+gm.summer.p.prev <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.int.prev <- lmer(log.no.stemsT1 ~ log.no.stems*prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.prev <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int1.prev <- lmer(log.no.stemsT1 ~ log.no.stems*prev_summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int2.prev <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int3.prev <- lmer(log.no.stemsT1 ~ log.no.stems*prev_summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+
+################################################################################
+###
+growth <- mget(ls(pattern = "^gm")) #make a list of all of those models that start with gm (^ means start with)
+growth_AICc<-aictab(cand.set = growth, modnames = NULL,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+#rm(list = ls()[grepl("gm", ls())]) #removes everything with gm
+
+# saving AIC table:
+## names of models:
+# names <- as.data.frame(names(growth))
+# growth_AICc <- growth_AICc %>% 
+#   arrange(Modnames)
+# 
+# names=data.frame(model.names = c(1:105))
+# growth_AICc$model.names[[i]]
+# 
+# for (i in 1:105) {
+#     names$formulas[[i]]<- formula(growth[[i]])
+#     names$formulas <- names$formulas
+# }
+
+AIC.save <- growth_AICc %>% 
+  arrange(AICc) %>% 
+  slice_head(n =10)
+AIC.save$vitalrate <- "growth"
+
+summary(gm.summer.p)
+```
+
 ```{r growth figure}
 pred.dat.g <- expand.grid(log.no.stems = seq(min(dac$log.no.stems, na.rm = TRUE), max(dac$log.no.stems, na.rm = TRUE), by = .1), summer.tot.precip = c(-1.271, 1.443))
 pred.dat.output.g <- cbind(pred.dat.g, as.data.frame(predict(gm.summer.p, newdata = pred.dat.g, type="response", re.form=~0, pred.var=TRUE)))
 colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.no.stemsT1"  # Renaming the last column
 
-(growth <- dac %>% 
-  ggplot(aes(x = log.no.stems, y = log.no.stemsT1))+
-  geom_point(aes(data = dac ,alpha = 0.5, size = summer.tot.precip), shape = 1)+
-  #geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 0), aes(x = log.no.stems, y = pflowerT), color = "grey", size = 1.5)+ 
-  geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 1), aes(x = log.no.stems, y = pflowerT), color = "lightblue", size = 1.5)+ 
-  geom_line(data = subset(pred.dat.output.g, summer.tot.precip == -1), aes(x = log.no.stems, y = pflowerT), color = "orange", size = 1.5)+ 
-  theme(axis.line = element_line(colour = 'black', linewidth = 1.1))+
-  geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .2)+
-  scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5))+
-  scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5))+
-  labs( x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
+# (growth <- dac %>% 
+#   ggplot(aes(x = log.no.stems, y = log.no.stemsT1))+
+#   geom_point(aes(data = dac ,alpha = 0.5, size = summer.tot.precip), shape = 1)+
+#   #geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 0), aes(x = log.no.stems, y = pflowerT), color = "grey", size = 1.5)+ 
+#   geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 1), aes(x = log.no.stems, y = pflowerT), color = "lightblue", size = 1.5)+ 
+#   geom_line(data = subset(pred.dat.output.g, summer.tot.precip == -1), aes(x = log.no.stems, y = pflowerT), color = "orange", size = 1.5)+ 
+#   theme(axis.line = element_line(colour = 'black', linewidth = 1.1))+
+#   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .2)+
+#   scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5))+
+#   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5))+
+#   labs( x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
 
 (growth <- dac %>% 
   ggplot(aes(x = log.no.stems, y = log.no.stemsT1))+
@@ -218,12 +378,12 @@ colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.no.stemsT1"  # Rena
   geom_line(data = pred.dat.output.g, aes(color = factor(summer.tot.precip)),linewidth = 1.5) +
   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = "bottom")+
   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
-  scale_color_manual(name = "Summer total precipitation", values = c("darkorange","deepskyblue"), labels = c("Dry", "Wet")) +
+  scale_color_manual(name = "Summer total precipitation in t", values = c("darkorange","deepskyblue"), labels = c("Dry", "Wet")) +
   scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   labs(x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
 
-ggsave(here("Figures", "Dactylis", "growth.png"), plot = growth, width = 8, height =8)
+ggsave(here("Figures", "Dactylis", "growth.png"), plot = growth, width = 6, height =6)
 
 
 ```
@@ -336,7 +496,7 @@ colnames(pred.dat.output.p)[ncol(pred.dat.output.p)] <- "pflowerT"  # Renaming t
   #scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   labs(x = "log(Number of Stems) in t", y = "Probability of Flowering in t"))
 
-ggsave(here("Figures", "Dactylis", "flower.png"), plot = flower, width = 8, height =8)
+ggsave(here("Figures", "Dactylis", "flower.png"), plot = flower, width = 6, height =6)
 
 ```
 
@@ -436,12 +596,12 @@ colnames(pred.dat.output.s)[ncol(pred.dat.output.s)] <- "survT1"  # Renaming the
   geom_jitter(data = dac ,alpha = 0.25, shape = 1, height = .05, width = 0.05)+
   geom_line(data = pred.dat.output.s, aes(y = survT1, color = factor(summer.mean.max.temp)),linewidth = 1.5) +
   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = "bottom")+
-  scale_color_manual(name = "Summer max temp", values = c("cyan4","maroon"), labels = c("cool", "warm")) +
+  scale_color_manual(name = "Summer max temp in t", values = c("cyan4","maroon"), labels = c("cool", "warm")) +
   #scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   #scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   labs(x = "log(Number of Stems) in t", y = "Probability of Survival in t + 1"))
 
-ggsave(here("Figures", "Dactylis", "survival.png"), plot = survival, width = 8, height =8)
+ggsave(here("Figures", "Dactylis", "survival.png"), plot = survival, width = 6, height =6)
 
 ```
 
@@ -542,13 +702,13 @@ colnames(pred.dat.output.pan)[ncol(pred.dat.output.pan)] <- "No.panicles"  # Ren
   geom_jitter(alpha = 0.25, shape = 1, height = .05, width = 0.05)+
   geom_line(data = pred.dat.output.pan, aes(y = No.panicles, color = factor(spring.mean.temp)),linewidth = 1.5) +
   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = "bottom")+
-  scale_color_manual(name = "Spring average temp", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
+  scale_color_manual(name = "Spring average temp in t", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
     facet_wrap(~trt)+
   #scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   #scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
   labs(x = "log(Number of Stems) in t", y = "Number of panicles in t"))
 
-ggsave(here("Figures", "Dactylis", "pan.png"), plot = survival, width = 8, height =8)
+ggsave(here("Figures", "Dactylis", "pan.png"), plot = pan, width = 12, height =6)
 
 ```
 

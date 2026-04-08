@@ -1,5 +1,5 @@
 ---
-title: "dactylis.ipm"
+title: "lomatium.ipm"
 author: "JL"
 date: "`r Sys.Date()`"
 output: html_document
@@ -17,43 +17,48 @@ theme_set(theme_classic(base_size = 18)) #for ggplot
 ```
 
 ```{r}
-dac <- read.csv(here("clean_data", "Dactylis_Demography_Data_CLEANED_2016thru2025.csv"))
+lom <- read.csv(here("clean_data", "Lomatium_Demography_Data_CLEANED_2016thru2025.csv"))
 climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
 climate<- climate %>%
   arrange(year) %>%
   mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))
 
-dac <- left_join(dac, climate, by = c("Year" = "year"))
-dac <- dac %>% 
+#scott used size.t = log(No.leaves.t * Leaf.length.t) as the size measurement
+lom <- left_join(lom, climate, by = c("Year" = "year"))
+lom <- lom %>% 
+  group_by(plantid) %>% 
   mutate(Year = as.factor(Year), 
          Plot = as.factor(Plot),
-         survT = as.factor(survT),
-         survT1 = as.factor(survT1),
-         pflowerT = as.factor(pflowerT),
-         pflowerT1 = as.factor(pflowerT1),
-         log.no.stems = log(No.stems),
-         log.no.stemsT1 = log(No.stemsT1),
-        trt = as.factor(trt),
-        trt = fct_relevel(trt, "irrigated", "control", "drought"))
+          psurvival = factor(psurvival, levels = c(0, 1)),
+          psurvivalT1 = as.character(psurvivalT1),
+         psurvivalT1 = factor(psurvivalT1, levels = c(0, 1)),
+         pflower = factor(pflower, levels = c(0, 1)),
+         pflowerT1 = factor(pflowerT1, levels = c(0, 1)),
+    size = if_else(No.leaves > 0& Leaf.length>0, log(No.leaves* Leaf.length), NA),
+         sizeT1 = lead(size),
+    trt = as.factor(trt),
+    trt = fct_relevel(trt, "irrigated", "control", "drought")) %>% 
+  filter(Plot != "11")
 
-dac <- dac %>% 
-  filter(!(Plot %in% c("4", "5", "15")))
+gm.summer.av.temp.trt.int3 <- lmer(sizeT1 ~ size*summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = lom, REML = F)
+fm.summer.av.temp.trt.int2 <- glmer(pflowerT1 ~ size + summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = lom, family = "binomial")
+sm.gs.precip.int <- glmer(psurvivalT1 ~ size *spring.tot.precip + (1|Plot) + (1|Year), data = lom, family = "binomial")
+poisson.gs.av.temp.int <- glmer(No.umbels ~ size*spring.mean.temp + (1|Plot) + (1|Year), data = subset(lom, pflower == "1"), family = "poisson")
 
-gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-fm.base.size <- glmer(pflowerT ~ log.no.stems + (1|Plot) + (1|Year), data = dac, family = "binomial")
-sm.summer.av.temp.int <- glmer(survT1 ~ log.no.stems*summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
-poisson.gs.av.temp.trt.int2 <- glmer(No.panicles ~ log.no.stems + spring.mean.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
-
-dac.new <- dac %>% 
-  filter(stage == "seedling")
+#to do: get lomatium seedlings
+lom.new <- lom %>% 
+  filter(No.leaves == 1 &No.umbels==0 &is.na(Stalk_Height)) %>% 
+  group_by(plantid) %>% 
+  arrange(Year) %>% 
+  slice_head(n=1)
 #parameters for new plants
-new_sd <- sd(dac.new$log.no.stems)
-new_mean <- mean(dac.new$log.no.stems, na.rm = T)
-hist(dac.new$log.no.stems)
+new_sd <- sd(lom.new$size)
+new_mean <- mean(lom.new$size, na.rm = T)
+hist(lom.new$size)
 
 #Define the min and max size, which are the integration bounds of the IPM.
-minRealsize <- min(dac$log.no.stems, na.rm=T) 
-maxRealsize <- 1.1* max(dac$log.no.stems,na.rm=T)
+minRealsize <- min(lom$size, na.rm=T) 
+maxRealsize <- 1.1* max(lom$size,na.rm=T)
 
 #now add a new min & max size to keep the plants in for eviction
 ##note: this could be wrong for dactylis because -1 no stems seem weird! come back to this
@@ -66,23 +71,25 @@ max.size <-maxRealsize+1.5 #upper
 #pancile to seedlings proxy:
 #panciles in year t is a function of the number of panicles in the plot in the year prior
 #so to get the transition rate: number of seedlings in t/#panciles year t-1 (PER PLOT - for now)
-plot_summary <- dac %>%
+plot_summary <- lom %>%
   group_by(Plot, Year) %>%
   summarise(
-    seedlings_t = sum(stage == "seedling", na.rm = TRUE),
-    panicles_t = sum(No.panicles, na.rm = TRUE),
+    seedlings_t = sum(paste(plantid, Year) %in% 
+                      paste(lom.new$plantid, lom.new$Year)),
+    umbels_t = sum(No.umbels, na.rm = TRUE),
     .groups = "drop") %>% 
   drop_na()
 plot_summary <- plot_summary %>% 
   arrange(Plot, Year) %>%
   group_by(Plot) %>%
-  mutate(panicles_tminus1 = lag(panicles_t)) %>%
+  mutate(um_tminus1 = lag(umbels_t)) %>%
   drop_na() %>% 
  # ungroup() %>% 
-  mutate(germ.rate = seedlings_t/panicles_tminus1) %>% 
+  mutate(germ.rate = seedlings_t/um_tminus1) %>% 
   filter(is.finite(germ.rate))
-#pest <- mean(plot_summary$germ.rate)
-pest <- .01
+pest <- mean(plot_summary$germ.rate)
+#pest <- .01
+#germ.rate = number of seedlings from each umbel (percapita
 
 pest.sd <- sd(plot_summary$germ.rate)
 min(plot_summary$germ.rate)
@@ -92,7 +99,7 @@ max(plot_summary$germ.rate)
 
 ```{r parameters , echo=FALSE}
 #this is for range of climates
-rows <- expand.grid(summer.mean.max.temp = seq(-2, 2, by = 0.5), spring.mean.temp = seq(-2, 2, by = 0.5), trt = c("control", "drought", "irrigated"), summer.tot.precip = seq(-2, 2, by = 0.5)) 
+rows <- expand.grid(summer.mean.max.temp = seq(-2, 2, by = 0.5), spring.mean.temp = seq(-2, 2, by = 0.5), trt = c("control", "drought", "irrigated"), spring.tot.precip = seq(-2, 2, by = 0.5)) 
 #set up an empty parameter df
 params=data.frame(
 	growth.int = c(NA),
@@ -112,49 +119,60 @@ params <- bind_cols(params, rows)
 ```
 
 ```{r}
-#gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int3 <- lmer(sizeT1 ~ size*summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = lom, REML = F)
 #growth intercept
 for (i in 1:nrow(params)) {
-    params$growth.int[i] <- fixef(gm.summer.p)[1] + fixef(gm.summer.p)[3] * params$summer.mean.max.temp[i]
+  if (params$trt[i] == "control") {
+    params$growth.int[i] <- fixef(gm.summer.av.temp.trt.int3)[1] + fixef(gm.summer.av.temp.trt.int3)[3] * params$summer.mean.max.temp[i] + fixef(gm.summer.av.temp.trt.int3)[4] + fixef(gm.summer.av.temp.trt.int3)[9] * params$summer.mean.max.temp[i] 
+  } else if (params$trt[i] == "irrigated") {
+    params$growth.int[i] <- fixef(gm.summer.av.temp.trt.int3)[1] + fixef(gm.summer.av.temp.trt.int3)[3] * params$summer.mean.max.temp[i]
+  } else if (params$trt[i] == "drought") {
+    params$growth.int[i] <- fixef(gm.summer.av.temp.trt.int3)[1] + fixef(gm.summer.av.temp.trt.int3)[3] * params$summer.mean.max.temp[i] + fixef(gm.summer.av.temp.trt.int3)[5]+ fixef(gm.summer.av.temp.trt.int3)[10] * params$summer.mean.max.temp[i] 
+  }
 }
-
 #growth slope
-params$growth.slope <- fixef(gm.summer.p)[2]
-
-growth_var <- as.data.frame(VarCorr(gm.summer.p)) #assumes same variance across all
+for (i in 1:nrow(params)) {
+  if (params$trt[i] == "control") {
+    params$growth.slope[i] <- fixef(gm.summer.av.temp.trt.int3)[2] + fixef(gm.summer.av.temp.trt.int3)[6] * params$summer.mean.max.temp[i] + fixef(gm.summer.av.temp.trt.int3)[7] + fixef(gm.summer.av.temp.trt.int3)[11] * params$summer.mean.max.temp[i] 
+  } else if (params$trt[i] == "irrigated") {
+    params$growth.slope[i] <- fixef(gm.summer.av.temp.trt.int3)[2] + fixef(gm.summer.av.temp.trt.int3)[6] * params$summer.mean.max.temp[i] 
+  } else if (params$trt[i] == "drought") {
+    params$growth.slope[i] <- fixef(gm.summer.av.temp.trt.int3)[2] + fixef(gm.summer.av.temp.trt.int3)[6] * params$summer.mean.max.temp[i] + fixef(gm.summer.av.temp.trt.int3)[8]+ fixef(gm.summer.av.temp.trt.int3)[12] * params$summer.mean.max.temp[i] 
+  }
+}
+growth_var <- as.data.frame(VarCorr(gm.summer.av.temp.trt.int3)) #assumes same variance across all
 params$growth.sd <- growth_var[growth_var$grp=="Residual","sdcor"] # growth sd of residuals
 
 ### pflower
-#fm.base.size <- glmer(pflowerT ~ log.no.stems + (1|Plot) + (1|Year), data = dac, family = "binomial")
-
-#intercept
-params$pflow.int <- fixef(fm.base.size)[1]
-
-#slope:
-params$pflow.slope <- fixef(fm.base.size)[2]
-
-### no.flowers
-#poisson.gs.av.temp.trt.int2 <- glmer(No.panicles ~ log.no.stems + spring.mean.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+#fm.summer.av.temp.trt.int2 <- glmer(pflowerT1 ~ size + summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = lom, family = "binomial")
 #intercept
 for (i in 1:nrow(params)) {
   if (params$trt[i] == "control") {
-    params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i] + fixef(poisson.gs.av.temp.trt.int2)[4] + fixef(poisson.gs.av.temp.trt.int2)[6] * params$spring.mean.temp[i] 
+    params$pflow.int[i] <- fixef(fm.summer.av.temp.trt.int2)[1] + fixef(fm.summer.av.temp.trt.int2)[3] * params$summer.mean.max.temp[i]+ fixef(fm.summer.av.temp.trt.int2)[4]+fixef(fm.summer.av.temp.trt.int2)[6] * params$summer.mean.max.temp[i]
   } else if (params$trt[i] == "irrigated") {
-    params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i]
+    params$pflow.int[i] <- fixef(fm.summer.av.temp.trt.int2)[1] + fixef(fm.summer.av.temp.trt.int2)[3] * params$summer.mean.max.temp[i]
   } else if (params$trt[i] == "drought") {
-    params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i] + fixef(poisson.gs.av.temp.trt.int2)[5]+ fixef(poisson.gs.av.temp.trt.int2)[7] * params$spring.mean.temp[i] 
+    params$pflow.int[i] <- fixef(fm.summer.av.temp.trt.int2)[1] + fixef(fm.summer.av.temp.trt.int2)[3] * params$summer.mean.max.temp[i]+ fixef(fm.summer.av.temp.trt.int2)[5]+fixef(fm.summer.av.temp.trt.int2)[7] * params$summer.mean.max.temp[i]
   }
 }
-#slope
-params$no.flow.slope <- fixef(poisson.gs.av.temp.trt.int2)[2]
 
+#slope:
+params$pflow.slope <- fixef(fm.summer.av.temp.trt.int2)[2]
+
+##### no.flowers
+#poisson.gs.av.temp.int <- glmer(No.umbels ~ size*spring.mean.temp + (1|Plot) + (1|Year), data = subset(lom, pflower == "1"), family = "poisson")
+#intercept
+for (i in 1:nrow(params)) {
+  params$no.flow.slope[i] <- fixef(poisson.gs.av.temp.int)[2] + fixef(poisson.gs.av.temp.int)[4] * params$spring.mean.temp[i]
+  params$no.flow.int[i] <- fixef(poisson.gs.av.temp.int)[1] + fixef(poisson.gs.av.temp.int)[3] * params$spring.mean.temp[i]
+}
 
 ##survival:
-#sm.summer.av.temp.int <- glmer(survT1 ~ log.no.stems*summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+#sm.gs.precip.int <- glmer(psurvivalT1 ~ size *spring.tot.precip + (1|Plot) + (1|Year), data = lom, family = "binomial")
 #slope
 for (i in 1:nrow(params)) {
-  params$surv.slope[i] <- fixef(sm.summer.av.temp.int)[2] + fixef(sm.summer.av.temp.int)[4] * params$summer.mean.max.temp[i]
-  params$surv.int[i] <- fixef(sm.summer.av.temp.int)[1] + fixef(sm.summer.av.temp.int)[3] * params$summer.mean.max.temp[i]
+  params$surv.slope[i] <- fixef(sm.gs.precip.int)[2] + fixef(sm.gs.precip.int)[4] * params$spring.tot.precip[i]
+  params$surv.int[i] <- fixef(sm.gs.precip.int)[1] + fixef(sm.gs.precip.int)[3] * params$spring.tot.precip[i]
 }
 
 #params$no.seeds <- no.seeds
@@ -262,7 +280,7 @@ bigmatrix <- function(params_list, mat.size){
     lambda = lambda(IPMmat),
     summer.mean.max.temp = params_list$summer.mean.max.temp,
     spring.temp = params_list$spring.mean.temp,
-    summer.tot.precip = params_list$summer.tot.precip,
+    spring.tot.precip = params_list$spring.tot.precip,
     trt = params_list$trt)
 
   return(out_lamb)
@@ -272,12 +290,12 @@ bigmatrix <- function(params_list, mat.size){
 lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
 
 #great~! now make it a df
-dac_lambda <- do.call(rbind, lamb_lists)
+lom_lambda <- do.call(rbind, lamb_lists)
 
 ```
 
 ```{r}
-ggplot(dac_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)) +
+ggplot(lom_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)) +
   geom_tile(color = "white") +
   scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1.45) +
   labs(x = "Summer Temperature", y = "Spring Temperature", fill = expression(lambda)) +
@@ -291,33 +309,32 @@ ggplot(dac_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)
   theme_minimal(base_size = 14)
 ```
 
-
 ```{r}
-y_limits <- c(.98, 1.12)
-(summer.temp <- dac_lambda %>%
-  filter(spring.temp == 0, summer.tot.precip == 0) %>% 
+y_limits <- c(1.1, 1.8)
+(summer.temp <- lom_lambda %>%
+  filter(spring.temp == 0, spring.tot.precip == 0) %>% 
   ggplot(aes(x = summer.mean.max.temp, y = lambda, color = trt)) +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
   labs(
-    x = "Summer Temperature",
+    x = "Summer Max Temperature",
     y = expression(lambda),
     color = ""
   ) )
-(precip <- dac_lambda %>%
+(precip <- lom_lambda %>%
   filter(spring.temp == 0, summer.mean.max.temp == 0) %>% 
-  ggplot(aes(x = summer.tot.precip, y = lambda, color = trt)) +
+  ggplot(aes(x = spring.tot.precip, y = lambda, color = trt)) +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
   labs(
-    x = "Summer Precipitation",
+    x = "Spring Precipitation",
     y = expression(lambda),
     color = ""
   ) )
-(sp.temp <- dac_lambda %>%
-  filter(summer.tot.precip == 0, summer.mean.max.temp == 0) %>% 
+(sp.temp <- lom_lambda %>%
+  filter(spring.tot.precip == 0, summer.mean.max.temp == 0) %>% 
   ggplot(aes(x = spring.temp, y = lambda, color = trt)) +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
@@ -330,8 +347,6 @@ y_limits <- c(.98, 1.12)
 (together <- summer.temp+precip+sp.temp+ plot_layout(guides = "collect", axis_titles = "collect") &
   theme(legend.position = "bottom"))
 
-ggsave(here("Figures", "Dactylis", "dactylis.pop.growth.low.pest.png"), plot = together, width = 10, height =5)
+ggsave(here("Figures", "lomatium", "lomatium.pop.growth.png"), plot = together, width = 10, height =5)
 
 ```
-
-

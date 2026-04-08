@@ -1,0 +1,365 @@
+---
+title: "primula.ipm"
+author: "JL"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+primula <- read.csv(here("clean_data", "Primula_Demography_Data_CLEANED_2016thru2025.csv"))
+climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
+
+#scott used size.t = log(No.leaves.t * Leaf.length.t) as the size measurement
+primula <- left_join(primula, climate)
+primula <- primula %>% 
+  group_by(tag) %>% 
+  mutate(year = as.factor(year), 
+         plot = as.factor(plot),
+          psurvival = factor(psurvival, levels = c(0, 1)),
+          psurvivalT1 = as.character(psurvivalT1),
+         psurvivalT1 = factor(psurvivalT1, levels = c(0, 1)),
+         pflower = factor(pflower, levels = c(0, 1)),
+         pflowerT1 = factor(pflowerT1, levels = c(0, 1)),
+   # size = if_else(No.leaves > 0& Leaf.length>0, log(No.leaves* Leaf.length), NA),
+   #      sizeT1 = lead(size),
+    trt = as.factor(trt),
+    trt = fct_relevel(trt, "irrigated", "control", "drought")) 
+primula <- primula %>% 
+  mutate(leaves = if_else(is.na(leaves), no.smleaf+no.bigleaf, leaves)) %>% 
+  filter(leaves>1|is.na(leaves))
+
+leaf <- primula %>% 
+  filter(no.smleaf>0,
+         !is.na(no.neighbors),
+         no.smleaf<15)
+
+#these are for the new plants
+new.plants <- primula %>%   
+  mutate(leaves = if_else(year == 2022, no.smleaf + no.bigleaf, leaves)) %>% 
+  filter(year == YrTag) %>% ##need to filter cases where year tagged == year (so newly tagged that year)
+  filter(pflower == 0) %>% ## actual new plants definitely can't flower in the first year
+  filter(leaves < 3) %>% ## can't have more than 3 leaves if youre new
+  filter(!is.na(log.ros.area))
+```
+
+```{r}
+growth6 <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*summer.mean.max.temp + (1|plot) + (1|year), data = primula, REML = F)
+pflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = primula, family = "binomial")
+nf.wt <-  glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp+(1|plot) + (1|year), data= subset(primula, no.flowersT1>0), family = "poisson")
+surv <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
+
+pclonal <- glmer(pclonalT1 ~ log.ros.area + (1|plot) + (1|year), data = subset(primula, !is.na(no.neighbors)&!is.na(pclonalT1)), family = "binomial")
+no.clones <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
+```
+Then the other miscellany we'll need (size independent parameters):
+Here, keeping them the saem as chapters 1 and 2 for now
+```{r}
+## I need to change this because this is treatment dependent!
+#no.seeds <- 36 #if you make seeds, this is on average how many seeds you make. But, this needs to be a function below
+prob.seed.germ <- .022 #this is from the seed addition data - average seed has 0.022 chance of germination
+prob.seedling.to.1leaf <- .03 #this is estimated from seed miniplots
+
+#if a one leaf survives it will either stay as a one leaf or go to adult. BUT they can die. So. One leafs can either die, stay the same, or grow
+prob.1leaf.to.1leaf <- .41*.42 # p that it survives and probability it doesn't become a 2 leaf
+prob.1leaf.to.2leaf <- .41*.58 #p that it survives and probability that it becomes an adult
+
+new_sd <- sd(new.plants$log.ros.area)
+new_mean <- mean(new.plants$log.ros.area)
+hist(new.plants$log.ros.area)
+
+#Define the min and max size, which are the integration bounds of the IPM.
+minRealsize <- min(primula$log.ros.area, na.rm=T) 
+maxRealsize <- 1.1* max(primula$log.ros.area,na.rm=T)
+
+#now add a new min & max size to keep the plants in for eviction
+min.size <-minRealsize-1 #lower
+max.size <-maxRealsize+1.5 #upper
+
+```
+
+## Collect model parameters into a df
+
+```{r parameters , echo=FALSE}
+#this is for range of climates
+rows <- expand.grid(summer.mean.temp = c(-1.78,0, 1.73), summer.mean.max.temp = seq(-2, 2, by = 0.5), winter.mean.min.temp = seq(-2, 2, by = 0.5), trt = c("control", "drought", "irrigated")) # add this in later
+#set up an empty parameter df
+#add clonal!
+params=data.frame(
+	growth.int = c(NA),
+	growth.slope  = NA,
+	growth.sd=NA,
+	surv.int=NA,
+	surv.slope=NA,
+	pflow.int = NA,
+	pflow.slope = NA,
+	no.flow.int=NA,
+	no.flow.slope=NA,
+	pclonal.int = NA,
+	pclonal.slope = NA,
+	no.clone.int = NA,
+	no.clone.slope = NA,
+	recruit.size.mean=NA,
+	recruit.size.sd=NA,
+	prob.seed.germ = NA
+)
+params <- bind_cols(params, rows)
+```
+
+_RUN FOR WITHOUT BOOTSTRAPPING (P(EST) AND LTRE)_
+```{r paramters w/o bootstrapping and pest}
+#growth6 <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*summer.mean.max.temp + (1|plot) + (1|year), data = primula, REML = F)
+
+for (i in 1:nrow(params)) {
+  if (params$trt[i] == "control") {
+    params$growth.int[i] <- fixef(growth6)[1] + fixef(growth6)[3] + fixef(growth6)[5] * params$summer.mean.max.temp[i] + fixef(growth6)[6] * params$summer.mean.max.temp[i]
+  } else if (params$trt[i] == "irrigated") {
+    params$growth.int[i] <- fixef(growth6)[1] + fixef(growth6)[5] * params$summer.mean.max.temp[i]
+  } else if (params$trt[i] == "drought") {
+    params$growth.int[i] <- fixef(growth6)[1] + fixef(growth6)[4] + fixef(growth6)[5] * params$summer.mean.max.temp[i] + 
+      fixef(growth6)[7] * params$summer.mean.max.temp[i]
+  }
+}
+
+
+#growth slope
+params$growth.slope<- fixef(growth6)[2]
+
+growth_var <- as.data.frame(VarCorr(growth6)) #assumes same variance across all
+params$growth.sd <- growth_var[growth_var$grp=="Residual","sdcor"] # growth sd of residuals
+
+### pflower
+#pflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = primula, family = "binomial")
+
+#intercept
+params$pflow.int <- case_when(params$trt == "control"~  fixef(pflow.ti)[1] + fixef(pflow.ti)[3],
+                             params$trt == "irrigated"~  fixef(pflow.ti)[1],
+                             params$trt == "drought"~  fixef(pflow.ti)[1] + fixef(pflow.ti)[4])
+
+#slope:
+params$pflow.slope <- case_when(params$trt == "control"~  fixef(pflow.ti)[2]+fixef(pflow.ti)[5],
+                             params$trt == "irrigated"~  fixef(pflow.ti)[2],
+                             params$trt == "drought"~  fixef(pflow.ti)[2] + fixef(pflow.ti)[6])
+
+
+### no.flowers
+#nf.wt <-  glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp+(1|plot) + (1|year), data= subset(primula, no.flowersT1>0), family = "poisson")
+#slope
+for (i in 1:nrow(params)) {
+  params$no.flow.slope[i] <- fixef(nf.wt)[2]
+  params$no.flow.int[i] <- fixef(nf.wt)[1] + fixef(nf.wt)[3] * params$winter.mean.min.temp[i]
+}
+
+
+##survival:
+#surv <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
+#slope
+params$surv.slope <- fixef(surv)[2]
+params$surv.int<- fixef(surv)[1]
+
+
+#currently, seeds per flower is not size dependent, but is treatment dependent
+#flowers in drought plots make 6 seeds, control make 11, irrigated make 13
+params$seeds[params$trt == "irrigated"] <- 13
+params$seeds[params$trt == "drought"] <- 6
+params$seeds[params$trt == "control"] <- 11
+
+#pclonal
+#pclonal <- glmer(pclonalT1 ~ log.ros.area + (1|plot) + (1|year), data = subset(primula, !is.na(no.neighbors)&!is.na(pclonalT1)), family = "binomial")
+#slope
+params$pclonal.int <- fixef(pclonal)[1]
+params$pclonal.slope<- fixef(pclonal)[2]
+
+#no.clones <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
+params$no.clone.int <- fixef(no.clones)[1]
+params$no.clone.slope<- fixef(no.clones)[2]
+#intercept
+
+#params$no.seeds <- no.seeds
+params$prob.seed.germ <- prob.seed.germ
+params$recruit.size.mean <- new_mean # mean new >1 leaf plant size
+params$recruit.size.sd<- new_sd # sd of new >1 leaf plant size
+
+```
+
+#for pclonal.int, the bootstrapped values are a bit off from the other predicted values (about 0.1-0.2) - I think it is from the high SE in the model parameters, could add more bootstrapped samples if its a porblem later (larger == closer to the exact value)
+# Build the model!
+
+### Step 1. Build vital rate functions (components of the kernel)
+_RUN FOR ALL - THESE ARE THE FUNCTIONS FOR ALL THE IPMS_
+```{r VR functions}
+###~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+###         Load functions
+###~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#params <- params_expanded #uncheck this for the bootstrapped parameters
+
+#SURVIVAL AT SIZE X
+s.x=function(x,params) {
+	u=exp(params$surv.int+params$surv.slope*x)
+	return(u/(1+u))
+}
+
+#how to test this: 
+### run function for a plant of size 1 and for the first row of parameters
+#s.x(x = 1, params = params[1,])
+### run function for a plant of size 1 but for all rows of parameters (so get a list )
+#s.x(x = 1, params = params)
+#ok this works and seems to work for all rows of params. great.
+
+#GROWTH FROM SIZE X TO Y; 
+  ## returns a *probability density distribution* for each x value
+g.yx<-function(y,x,params){
+    # eviction here...
+  xb=pmin(pmax(x,minRealsize),maxRealsize) #Transforms all values below/above limits in min/max size (floor & ceiling)
+  growth_to_newsize <-params$growth.int + params$growth.slope*xb
+  growth_sd <- params$growth.sd
+  return(dnorm(y,mean=growth_to_newsize,sd=growth_sd))
+  #dnorm(y,mean=params$growth.int + params$growth.slope*x,sd=params$growth.sd)
+}
+
+#Tom Miller's combined s and g kernel
+P <- function(y, x, params){
+  s.x(x, params)*g.yx(y, x, params)
+}
+
+#PROBABILITY OF FLOWERING OF SIZE X individuals
+pf.x <-function(x,params){
+	u<-exp(params$pflow.int+params$pflow.slope*x)
+	return(u/(1+u))
+}
+#testing this for a plant of size 5
+#pf.x(x = 8,params = params_expanded)
+
+f.yx <- function(x,params) { 		
+  return(pf.x(x,params)*exp(params$no.flow.int+params$no.flow.slope*x)* params$seeds * params$prob.seed.germ)
+}
+##so this should be outputting the number of seedlings made? Yes
+#f.yx(x = 7,params = params_original)
+
+
+##do big plants make a million flowers?
+#exp(params$no.flow.int+params$no.flow.slope*8) 
+## no they make a reasonable amount
+
+
+cf <- function(x,params) { 		
+  return(exp(params$pclonal.int+params$pclonal.slope*x)*exp(params$no.clone.int+params$no.clone.slope*x))
+}
+#to test:
+#cf(x = 5,params = params)
+#exp(params$pclonal.int+params$pclonal.slope*2)*exp(params$no.clone.int+params$no.clone.slope*2)
+
+
+#SIZE DISTRIBUTION OF RECRUITS - so the ones going from the 1 leaf stage into the continuous stage. I'm not sure that this is doing what I want it to - 
+recruit.size<-function(y,params){
+    ## returns a *probability density distribution*
+  dnorm(y,mean=params$recruit.size.mean,sd=params$recruit.size.sd)
+}
+```
+
+```{r ipm}
+#to add in pest for params (uncheck when making that figure)
+#make parameters for control and non reproductive plants under mean temperatures (more simple)
+params_list <-  filter(params) %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
+
+#if a one leaf survives it will either stay as a one leaf or go to adult. BUT they can die. So. One leafs can either die, stay the same, or grow
+prob.1leaf.to.1leaf <- .41*.42 # p that it survives and probability it doesn't become a 2 leaf
+prob.1leaf.to.2leaf <- .41*.58 #p that it survives and probability that it becomes an adult
+mat.size = 100 #dimensions of continuous matrix
+bigmatrix<-function(params_list, mat.size)
+  {
+  n<-mat.size
+  L<-min.size
+  U<-max.size
+  #these are the upper and lower integration limits
+  h<-(U-L)/n                   #Bin size
+  b<-L+c(0:n)*h;               #Lower boundaries of bins 
+  y<-0.5*(b[1:n]+b[2:(n+1)]);  #Bins' midpoints
+  #these are the boundary points (b) and mesh points (y)
+
+  # Fertility matrix
+  Fmat<-matrix(0,(n+2),(n+2))
+  
+  # top row: # seedlings produced by each size class:
+  Fmat[1,3:(n+2)]<-f.yx(y,params_list) #This is a y because it is the fecundity kernel for plants that have already grown/survived, I think? It's what Tom has
+  
+  # Growth/survival transition matrix
+  Tmat<-matrix(0,(n+2),(n+2))
+  
+  # probability seedling becomes a 1 leaf plant
+  Tmat[2,1]<- prob.seedling.to.1leaf
+  
+   # probability 1 leaf plant stays as a 1 leaf plant
+  Tmat[2,2]<- prob.1leaf.to.1leaf
+  
+  # clonal growth: addition of 1-leaf plants by adults
+  Tmat[2,3:(n+2)] <- cf(y, params_list)
+  # clonal growth: addition of 1-leaf plants by adults == 0 (checking what would happen if clonality was zero)
+  #Tmat[2,3:(n+2)] <- 0
+  
+  # Graduation from 1 leaf to cts size = prob 1 leaf becomes a 2 leaf * size dist of new adults
+  Tmat[3:(n+2),2]<- prob.1leaf.to.2leaf *recruit.size(y,params_list) * h
+  
+  # Growth/survival transitions among cts sizes
+  Tmat[3:(n+2),3:(n+2)]<- outer(y,y,P,params=params_list) * h 
+  
+  # Put it all together
+  IPMmat<-Fmat+Tmat     #Full Kernel is simply a summation of fertility and transition matrix
+  out_matrix <- list(IPMmat=IPMmat,Fmat=Fmat,Tmat=Tmat,meshpts=y)
+  
+  out_lamb <- data.frame(lambda = lambda(IPMmat), summer.mean.max.temp = params_list$summer.mean.max.temp, trt = params_list$trt, winter.mean.min.temp = params_list$winter.mean.min.temp)
+   # return(out_matrix) #can check this to have a list of all of the matrices listed above
+  return(out_lamb) #for now, I just want lambdas
+ # return(list(out_matrix = out_matrix, out_lamb = out_lamb))
+
+}
+
+#what I want returned is lambdas
+lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
+
+#great~! now make it a df
+primula_lambda <- do.call(rbind, lamb_lists)
+```
+
+
+```{r}
+y_limits <- c(.98,1.2)
+(summer.temp <- primula_lambda %>%
+  filter(winter.mean.min.temp ==0) %>% 
+  ggplot(aes(x = summer.mean.max.temp, y = lambda, color = trt)) +
+  geom_line(size = 1.2) +
+  scale_y_continuous(limits = y_limits) +
+  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  labs(
+    x = "Summer Max Temperature",
+    y = expression(lambda),
+    color = ""
+  ) )
+(winter <- primula_lambda %>%
+  filter(summer.mean.max.temp == 0) %>% 
+  ggplot(aes(x = winter.mean.min.temp, y = lambda, color = trt)) +
+  geom_line(size = 1.2) +
+  scale_y_continuous(limits = y_limits) +
+  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  labs(
+    x = "Winter Min Temperature",
+    y = expression(lambda),
+    color = ""
+  ) )
+# (sp.temp <- dac_lambda %>%
+#   filter(summer.tot.precip == 0, summer.mean.max.temp == 0) %>% 
+#   ggplot(aes(x = spring.temp, y = lambda, color = trt)) +
+#   geom_line(size = 1.2) +
+#   scale_y_continuous(limits = y_limits) +
+#   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+#   labs(
+#     x = "Spring Temperature",
+#     y = expression(lambda),
+#     color = ""
+#   ) )
+(together <- summer.temp+winter+ plot_layout(guides = "collect", axis_titles = "collect") &
+  theme(legend.position = "bottom"))
+
+ggsave(here("Figures", "Primula", "primula.pop.growth.png"), plot = together, width = 7.5, height =5)
+```
+
