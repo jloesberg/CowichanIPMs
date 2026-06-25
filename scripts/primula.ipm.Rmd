@@ -9,7 +9,6 @@ output: html_document
 primula <- read.csv(here("clean_data", "Primula_Demography_Data_CLEANED_2016thru2025.csv"))
 climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
 
-#scott used size.t = log(No.leaves.t * Leaf.length.t) as the size measurement
 primula <- left_join(primula, climate)
 primula <- primula %>% 
   group_by(tag) %>% 
@@ -48,18 +47,24 @@ pflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = pr
 nf.wt <-  glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp+(1|plot) + (1|year), data= subset(primula, no.flowersT1>0), family = "poisson")
 surv <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
 
+##
+gm.base <- lmer(log.ros.areaT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, REML = F)
+pmflow.base <- glmer(pflowerT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
+surv.11 <-  glmer(psurvivalT1 ~ log.ros.area +fall.mean.temp	+(1|plot) + (1|year), data = primula, family = "binomial")
+nf.wt <-  glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp	+(1|plot) + (1|year), data= subset(primula, no.flowersT1>0), family = "poisson")
+
+
 pclonal <- glmer(pclonalT1 ~ log.ros.area + (1|plot) + (1|year), data = subset(primula, !is.na(no.neighbors)&!is.na(pclonalT1)), family = "binomial")
 no.clones <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
 ```
 Then the other miscellany we'll need (size independent parameters):
 Here, keeping them the saem as chapters 1 and 2 for now
 ```{r}
-## I need to change this because this is treatment dependent!
-#no.seeds <- 36 #if you make seeds, this is on average how many seeds you make. But, this needs to be a function below
 prob.seed.germ <- .022 #this is from the seed addition data - average seed has 0.022 chance of germination
 prob.seedling.to.1leaf <- .03 #this is estimated from seed miniplots
 
 #if a one leaf survives it will either stay as a one leaf or go to adult. BUT they can die. So. One leafs can either die, stay the same, or grow
+#to do: update with 2026 data
 prob.1leaf.to.1leaf <- .41*.42 # p that it survives and probability it doesn't become a 2 leaf
 prob.1leaf.to.2leaf <- .41*.58 #p that it survives and probability that it becomes an adult
 

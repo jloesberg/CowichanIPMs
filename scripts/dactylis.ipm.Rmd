@@ -7,7 +7,7 @@ output: html_document
 
 ```{r packages}
 ## Primula vital rates with climate data
-
+library(here)
 library(tidyverse)
 library(AICcmodavg)
 library(lme4)
@@ -39,10 +39,14 @@ dac <- dac %>%
 dac <- dac %>% 
   filter(!(Plot %in% c("4", "5", "15")))
 
+dac.survival <- dac %>% 
+  filter(Year!= "2024",
+         Year!= "2025")
+
 gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-fm.base.size <- glmer(pflowerT ~ log.no.stems + (1|Plot) + (1|Year), data = dac, family = "binomial")
-sm.summer.av.temp.int <- glmer(survT1 ~ log.no.stems*summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
-poisson.gs.av.temp.trt.int2 <- glmer(No.panicles ~ log.no.stems + spring.mean.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.survival, family = "binomial")
+poisson.prev_spring.mean.temp.int <- glmer(No.panicles ~ log.no.stems *prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
 
 dac.new <- dac %>% 
   filter(stage == "seedling")
@@ -81,8 +85,8 @@ plot_summary <- plot_summary %>%
  # ungroup() %>% 
   mutate(germ.rate = seedlings_t/panicles_tminus1) %>% 
   filter(is.finite(germ.rate))
-#pest <- mean(plot_summary$germ.rate)
-pest <- .01
+pest <- mean(plot_summary$germ.rate)
+#pest <- .01
 
 pest.sd <- sd(plot_summary$germ.rate)
 min(plot_summary$germ.rate)
@@ -92,7 +96,7 @@ max(plot_summary$germ.rate)
 
 ```{r parameters , echo=FALSE}
 #this is for range of climates
-rows <- expand.grid(summer.mean.max.temp = seq(-2, 2, by = 0.5), spring.mean.temp = seq(-2, 2, by = 0.5), trt = c("control", "drought", "irrigated"), summer.tot.precip = seq(-2, 2, by = 0.5)) 
+rows <- expand.grid(winter.mean.min.temp = seq(-2, 2, by = 1), prev_spring.mean.temp = seq(-2, 2, by = 1),  summer.tot.precip = seq(-2, 2, by = 1)) 
 #set up an empty parameter df
 params=data.frame(
 	growth.int = c(NA),
@@ -113,49 +117,64 @@ params <- bind_cols(params, rows)
 
 ```{r}
 #gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+growth <- fixef(gm.summer.p)
 #growth intercept
-for (i in 1:nrow(params)) {
-    params$growth.int[i] <- fixef(gm.summer.p)[1] + fixef(gm.summer.p)[3] * params$summer.mean.max.temp[i]
-}
-
+params$growth.int <- growth["(Intercept)"] + growth["summer.tot.precip"] * params$summer.tot.precip
 #growth slope
-params$growth.slope <- fixef(gm.summer.p)[2]
+params$growth.slope <- growth["log.no.stems"]
 
 growth_var <- as.data.frame(VarCorr(gm.summer.p)) #assumes same variance across all
 params$growth.sd <- growth_var[growth_var$grp=="Residual","sdcor"] # growth sd of residuals
 
 ### pflower
-#fm.base.size <- glmer(pflowerT ~ log.no.stems + (1|Plot) + (1|Year), data = dac, family = "binomial")
-
+#fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+flowering <- fixef(fm.prev_spring.mean.temp)
 #intercept
-params$pflow.int <- fixef(fm.base.size)[1]
-
+params$pflow.int<- flowering["(Intercept)"] + flowering["prev_spring.mean.temp"] * params$prev_spring.mean.temp
 #slope:
-params$pflow.slope <- fixef(fm.base.size)[2]
+params$pflow.slope <- flowering["log.no.stems"]
 
-### no.flowers
-#poisson.gs.av.temp.trt.int2 <- glmer(No.panicles ~ log.no.stems + spring.mean.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
-#intercept
-for (i in 1:nrow(params)) {
-  if (params$trt[i] == "control") {
-    params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i] + fixef(poisson.gs.av.temp.trt.int2)[4] + fixef(poisson.gs.av.temp.trt.int2)[6] * params$spring.mean.temp[i] 
-  } else if (params$trt[i] == "irrigated") {
-    params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i]
-  } else if (params$trt[i] == "drought") {
-    params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i] + fixef(poisson.gs.av.temp.trt.int2)[5]+ fixef(poisson.gs.av.temp.trt.int2)[7] * params$spring.mean.temp[i] 
-  }
-}
-#slope
-params$no.flow.slope <- fixef(poisson.gs.av.temp.trt.int2)[2]
+####################### no.flowers
+#poisson.prev_spring.mean.temp.int <- glmer(No.panicles ~ log.no.stems *prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+panicles <- fixef(poisson.prev_spring.mean.temp.int)
+
+params$no.flow.int <- panicles["(Intercept)"] +
+  panicles["prev_spring.mean.temp"] * params$prev_spring.mean.temp
+
+params$no.flow.slope <- panicles["log.no.stems"] +
+  panicles["log.no.stems:prev_spring.mean.temp"] * params$prev_spring.mean.temp
+
+# #intercept
+# for (i in 1:nrow(params)) {
+#   if (params$trt[i] == "control") {
+#     params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i] + fixef(poisson.gs.av.temp.trt.int2)[4] + fixef(poisson.gs.av.temp.trt.int2)[6] * params$spring.mean.temp[i] 
+#   } else if (params$trt[i] == "irrigated") {
+#     params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i]
+#   } else if (params$trt[i] == "drought") {
+#     params$no.flow.int[i] <- fixef(poisson.gs.av.temp.trt.int2)[1] + fixef(poisson.gs.av.temp.trt.int2)[3] * params$spring.mean.temp[i] + fixef(poisson.gs.av.temp.trt.int2)[5]+ fixef(poisson.gs.av.temp.trt.int2)[7] * params$spring.mean.temp[i] 
+#   }
+# }
+# #slope
+# params$no.flow.slope <- fixef(poisson.gs.av.temp.trt.int2)[2]
 
 
 ##survival:
-#sm.summer.av.temp.int <- glmer(survT1 ~ log.no.stems*summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+#sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.survival, family = "binomial")
+survival <- fixef(sm.wt.sp.int)
+
+params$surv.int <- survival["(Intercept)"] +
+  survival["prev_spring.mean.temp"] * params$prev_spring.mean.temp +
+  survival["winter.mean.min.temp"] * params$winter.mean.min.temp
+
+params$surv.slope <- survival["log.no.stems"] +
+  survival["log.no.stems:prev_spring.mean.temp"] * params$prev_spring.mean.temp
+
 #slope
-for (i in 1:nrow(params)) {
-  params$surv.slope[i] <- fixef(sm.summer.av.temp.int)[2] + fixef(sm.summer.av.temp.int)[4] * params$summer.mean.max.temp[i]
-  params$surv.int[i] <- fixef(sm.summer.av.temp.int)[1] + fixef(sm.summer.av.temp.int)[3] * params$summer.mean.max.temp[i]
-}
+# for (i in 1:nrow(params)) {
+#   params$surv.slope[i] <- fixef(sm.summer.av.temp.int)[2] + fixef(sm.summer.av.temp.int)[4] * params$summer.mean.max.temp[i]
+#   params$surv.int[i] <- fixef(sm.summer.av.temp.int)[1] + fixef(sm.summer.av.temp.int)[3] * params$summer.mean.max.temp[i]
+# }
 
 #params$no.seeds <- no.seeds
 params$pest <- pest
@@ -260,10 +279,9 @@ bigmatrix <- function(params_list, mat.size){
 
   out_lamb <- data.frame(
     lambda = lambda(IPMmat),
-    summer.mean.max.temp = params_list$summer.mean.max.temp,
-    spring.temp = params_list$spring.mean.temp,
-    summer.tot.precip = params_list$summer.tot.precip,
-    trt = params_list$trt)
+    prev_spring.mean.temp = params_list$prev_spring.mean.temp,
+    winter.mean.min.temp = params_list$winter.mean.min.temp,
+    summer.tot.precip = params_list$summer.tot.precip)
 
   return(out_lamb)
 }
@@ -289,6 +307,42 @@ ggplot(dac_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)
   labs(x = "Summer Temperature", y = "Spring Temperature", fill = expression(lambda)) +
   facet_grid(summer.tot.precip ~ trt) +
   theme_minimal(base_size = 14)
+```
+```{r}
+dac_lambda2 <- dac_lambda %>%  
+  filter(trt == "control",
+         summer.tot.precip == 0) %>% 
+  select(-c(summer.tot.precip, trt))
+summer_line <- dac_lambda2 %>% 
+  filter(spring.temp == 0) %>% 
+  rename(temp = summer.mean.max.temp,
+         mean.lambda = lambda) %>% 
+  mutate(type = "Summer temp (spring.temp = 0)")
+
+spring_line <- dac_lambda2 %>% 
+  filter(summer.mean.max.temp == 0) %>% 
+  rename(temp = spring.temp,
+         mean.lambda = lambda) %>% 
+  mutate(type = "Spring temp (summer.temp = 0)")
+
+# Combine
+plot_data <- bind_rows(summer_line, spring_line)
+
+# Plot
+(simple <- ggplot(plot_data, aes(x = temp, y = mean.lambda, color = type)) +
+  geom_line(size = 1.75) +
+   # geom_hline(yintercept = 1, color= "black", linewidth = .2)+
+  scale_color_manual(values = c(
+    "Summer temp (spring.temp = 0)" = "#dc863b",
+    "Spring temp (summer.temp = 0)" = "#74a089"
+  )) +
+  labs(x = "Temp", y = "Mean lambda") +
+  theme_classic(base_size = 18) +
+  theme(legend.position = "none"))
+#ggsave(plot = simple, file = "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/Primula/Figures/IPM/simple lambda for talk.png", width = 6, height = 6, dpi = 300)
+ggsave(here("Figures", "Dactylis", "simple.talk.png"), plot = simple, width = 6, height = 6, dpi = 300)
+
+
 ```
 
 
@@ -334,4 +388,37 @@ ggsave(here("Figures", "Dactylis", "dactylis.pop.growth.low.pest.png"), plot = t
 
 ```
 
+```{r}
+spring_line <- dac_lambda %>%
+  filter(winter.mean.min.temp == 0,
+         summer.tot.precip == 0) %>%
+  rename(temp = prev_spring.mean.temp,
+         mean.lambda = lambda) %>%
+  mutate(type = "Prev. spring mean temp")
+winter_line <- dac_lambda %>%
+  filter(prev_spring.mean.temp == 0,
+         summer.tot.precip == 0) %>%
+  rename(temp = winter.mean.min.temp,
+         mean.lambda = lambda) %>%
+  mutate(type = "Winter min temp")
+summer_line <- dac_lambda %>%
+  filter(prev_spring.mean.temp == 0,
+         winter.mean.min.temp == 0) %>%
+  rename(temp = summer.tot.precip,
+         mean.lambda = lambda) %>%
+  mutate(type = "Summer precip")
+plot_data <- bind_rows(spring_line, winter_line, summer_line)
+(all <- ggplot(plot_data, aes(x = temp, y = mean.lambda, color = type)) +
+  geom_line(linewidth = 1.75) +
+  scale_color_manual(values = c(
+    "Prev. spring mean temp" = "#74a089",
+    "Winter min temp" = "#4C78A8",
+    "Summer precip" = "#dc863b"
+  )) +
+  labs(x = "Climate", y = "λ", color = "") +
+  theme(legend.position = "bottom"))
+
+ggsave(here("Figures", "Dactylis", "dactylis.pop.growth.ap21.png"), plot = all, width = 8, height =6)
+
+```
 
