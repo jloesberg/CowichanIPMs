@@ -179,7 +179,7 @@ colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.ros.areaT1"  # Rena
   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
   legend.key = element_rect(fill = NA, colour = NA))+
   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
-  scale_color_manual(name = "Spring mean temp in t", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
+  scale_color_manual(name = "Spring temp, t", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 6))+
   labs( x = "log(Rosette Area) in t", y = "log(Rosette Area) in t + 1", linetype = "Temp.", color = "")+
   scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0)))
@@ -328,9 +328,10 @@ colnames(pred.dat.output)[ncol(pred.dat.output)] <- "flow.sum"  # Renaming the l
   geom_point(alpha= 0.2, shape = 1)+
   geom_line(data = pred.dat.output, aes(x = log.ros.area.prev, y = flow.sum, color = as.factor(prev_winter.mean.min.temp)), linewidth = 1.5)+
    theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, 0.9))+
-  scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+        scale_y_continuous(limits = c(0, NA), breaks = seq(0, ceiling(max(primula$flow.sum, na.rm = TRUE)), by = 1)) +
+  scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+        
+  scale_y_continuous(limits = c(0, NA), breaks = seq(0, ceiling(max(primula$flow.sum, na.rm = TRUE)), by = 1)) +
   labs(x = "log(Rosette Area) in t-1", y = "Number of flowers in t",  color = "" )+
-      scale_color_manual(name = "Winter min temp in t-1", values = c("#90d4cc", "#bd3027"), labels = c("cool", "warm")) )
+      scale_color_manual(name = "Winter temp, t-1", values = c("#90d4cc", "#bd3027"), labels = c("cool", "warm")) )
 
 ggsave(here("Figures", "Primula", "no.flowers.png"), plot = noflow.fig, width = 6, height =6)
 
@@ -340,7 +341,7 @@ ggsave(here("Figures", "Primula", "no.flowers.png"), plot = noflow.fig, width = 
 ```{r survival prequel}
 
 table(primula.surv$psurvivalT1, primula.surv$year)
-base.s <- glmer(psurvivalT1 ~ log.ros.area*year + (1|plot) , data = primula.surv, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
+base.s <- glmer(psurvivalT1 ~ log.ros.area*as.character(year) + (1|plot) , data = primula.surv, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
 drop1(base.s,test="Chisq") #yes, keep size*climate interactions
 # base.p2 <- glmer(psurvivalT1 ~ log.ros.area+year + (1|plot) , data = primula.surv, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
 base.p3 <- glmer(psurvivalT1 ~ log.ros.area+ (1|plot) +(1|year), data = primula.surv, family = "binomial")
@@ -381,6 +382,14 @@ cor_results_surv
 sm <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
 sm.t <-  glmer(psurvivalT1 ~ log.ros.area + trt + (1|plot) + (1|year), data = primula, family = "binomial")
 sm.ti <-  glmer(psurvivalT1 ~ log.ros.area*trt + (1|plot) + (1|year), data =primula, family = "binomial")
+
+sm.st <- glmer(psurvivalT1 ~ log.ros.area + spring.mean.temp + (1|plot) + (1|year), data = primula, family = "binomial")
+sm.st.i <- glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, family = "binomial")
+
+sm.t.st <-  glmer(psurvivalT1 ~ log.ros.area + trt + spring.mean.temp +  (1|plot) + (1|year), data = primula, family = "binomial")
+sm.ti.st <-  glmer(psurvivalT1 ~ log.ros.area*trt + spring.mean.temp+ (1|plot) + (1|year), data =primula, family = "binomial")
+sm.st.ti <-  glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + trt + (1|plot) + (1|year), data =primula, family = "binomial")
+
 
 prob.survival <- mget(ls(pattern = "^sm"))
 psurvival_AICc<-aictab(cand.set = prob.survival,second.ord=TRUE,nobs=NULL,sort=TRUE)

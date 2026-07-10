@@ -75,6 +75,11 @@ maxRealsize <- 1.1* max(lom$size,na.rm=T)
 #now add a new min & max size to keep the plants in for eviction
 min.size <-minRealsize-1 #lower
 max.size <-maxRealsize+1.5 #upper
+
+climate <- climate %>% 
+  mutate(year = as.factor(year)) %>% 
+  filter(year != "2015",
+         year!= "2016")
 ```
 
 ```{r best supported vital rate models}
@@ -127,7 +132,12 @@ max(plot_summary$germ.rate)
 
 ```{r parameters , echo=FALSE}
 #this is for range of climates
-rows <- expand.grid(prev_spring.mean.temp = seq(-1, 1, by = 1),fall.mean.temp = seq(-1, 1, by = 1),prev_fall.mean.temp = seq(-1, 1, by = 1),spring.tot.precip = seq(-1, 1, by = 1), trt = c("control", "drought", "irrigated")) 
+# rows <- expand.grid(prev_spring.mean.temp = seq(-1, 1, by = 1),fall.mean.temp = seq(-1, 1, by = 1),prev_fall.mean.temp = seq(-1, 1, by = 1),spring.tot.precip = seq(-1, 1, by = 1), trt = c("control", "drought", "irrigated"))
+rows <- climate %>% 
+  rename(Year = year) %>% 
+  select(Year, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, spring.tot.precip) %>% 
+  expand_grid(
+    trt = c("irrigated", "control", "drought"))
 #set up an empty parameter df
 params=data.frame(
 	growth.int = c(NA),
@@ -146,6 +156,57 @@ params=data.frame(
 	pest = NA
 )
 params <- bind_cols(params, rows)
+
+#adding in random effects
+#growth
+re_year_growth <- ranef(gm.base.trt.int)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(growth_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_growth, by = "Year") #%>% 
+  #filter(!is.na(growth_re))
+
+#pflower
+re_year_pflower <- ranef(fm.base.size)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(pflower_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_pflower, by = "Year") 
+
+#prob of making seeds
+re_year_pseeds <- ranef(ps.s.precip)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(pseeds_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_pseeds, by = "Year") 
+
+#survival
+re_year_surv <- ranef(sm.spf.int)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(surv_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_surv, by = "Year") 
+
+#no seeds
+re_year_noseeds <- ranef(poisson.f.trt)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(noseeds_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_noseeds, by = "Year") 
+
+ 
+
+#for any years without data, make 0 (average RE)
+params <- params %>%
+  mutate(across(
+      c(growth_re, pflower_re, pseeds_re,
+        surv_re, noseeds_re),
+      ~ tidyr::replace_na(., 0)))
 ```
 
 ```{r}
@@ -156,9 +217,9 @@ growth <- fixef(gm.base.trt.int)
 params <- params %>%
   mutate(
     growth.int = case_when(
-      trt == "irrigated" ~ growth["(Intercept)"],
-      trt == "control"   ~ growth["(Intercept)"] + growth["trtcontrol"],
-      trt == "drought"   ~ growth["(Intercept)"] + growth["trtdrought"]
+      trt == "irrigated" ~ growth["(Intercept)"] + params$growth_re,
+      trt == "control"   ~ growth["(Intercept)"] + growth["trtcontrol"] + params$growth_re,
+      trt == "drought"   ~ growth["(Intercept)"] + growth["trtdrought"] + params$growth_re
     ),
     growth.slope = case_when(
       trt == "irrigated" ~ growth["size"],
@@ -173,7 +234,7 @@ params$growth.sd <- growth_var[growth_var$grp == "Residual", "sdcor"]
 ### 2. pflower
 flowering <- fixef(fm.base.size)
 
-params$pflow.int<- flowering["(Intercept)"]
+params$pflow.int<- flowering["(Intercept)"] + params$pflower_re
 #slope:
 params$pflow.slope <- flowering["size"]
 
@@ -188,7 +249,7 @@ params <- params %>%
 
     surv.int = survival["(Intercept)"] +
       survival["prev_spring.mean.temp"] * prev_spring.mean.temp +
-      survival["fall.mean.temp"] * fall.mean.temp
+      survival["fall.mean.temp"] * fall.mean.temp + params$surv_re
   )
 
 
@@ -200,7 +261,7 @@ params <- params %>%
   mutate(
     pseeds.slope = pseeds["size"],
     pseeds.int = pseeds["(Intercept)"] +
-      pseeds["spring.tot.precip"] * spring.tot.precip
+      pseeds["spring.tot.precip"] * spring.tot.precip + params$pseeds_re
   )
 ### 5. noseeds:
 #poisson.f.trt <- glmer.nb(no.seeds ~ size  + prev_fall.mean.temp + trt + (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0))
@@ -212,17 +273,17 @@ params <- params %>%
     no.seeds.int = case_when(
       trt == "irrigated" ~
         no.seeds["(Intercept)"] +
-        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp,
+        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re,
 
       trt == "control" ~
         no.seeds["(Intercept)"] +
         no.seeds["trtcontrol"] +
-        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp,
+        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re,
 
       trt == "drought" ~
         no.seeds["(Intercept)"] +
         no.seeds["trtdrought"] +
-        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp
+        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re
     )
   )
 
@@ -230,6 +291,9 @@ params <- params %>%
 params$pest <- pest
 params$recruit.size.mean <- new_mean # mean new >1 leaf plant size
 params$recruit.size.sd<- new_sd # sd of new >1 leaf plant size
+
+params <- params %>% 
+  filter(Year!="2026")
 ```
 
 ```{r}
@@ -299,7 +363,7 @@ recruit.size<-function(y,params){
     ## returns a *probability density distribution*
   dnorm(y,mean=params$recruit.size.mean,sd=params$recruit.size.sd)
 }
-recruit.size(y = 1, params = params)
+#recruit.size(y = 1, params = params)
 ```
 
 ```{r}
@@ -339,6 +403,7 @@ bigmatrix <- function(params_list, mat.size){
     meshpts = y)
 
   out_lamb <- data.frame(
+    Year = params_list$Year,
     lambda = lambda(IPMmat),
     #prev_summer.mean.max.temp = params_list$prev_summer.mean.max.temp,
     prev_spring.mean.temp = params_list$prev_spring.mean.temp,
@@ -349,8 +414,13 @@ bigmatrix <- function(params_list, mat.size){
     #spring.tot.precip = params_list$spring.tot.precip,
     trt = params_list$trt)
 
-  return(out_lamb)
-}
+return(list(
+  IPMmat = IPMmat,
+  Fmat = Fmat,
+  Tmat = Tmat,
+  meshpts = y,
+  lambda = out_lamb
+))}
 
 #what I want returned is lambdas
 lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
@@ -358,143 +428,197 @@ lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for
 #great~! now make it a df
 lom_lambda <- do.call(rbind, lamb_lists)
 
+results <- lapply(params_list, bigmatrix, mat.size = mat.size)
+lom_lambda <- do.call(rbind, lapply(results, function(x) x$lambda))
+kernels <- lapply(results, function(x) x$IPMmat)
+kernel_info <- params %>%
+  select(Year, trt)
 ```
 
-```{r}
-ggplot(lom_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)) +
-  geom_tile(color = "white") +
-  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1.45) +
-  labs(x = "Summer Temperature", y = "Spring Temperature", fill = expression(lambda)) +
-  facet_wrap(~ trt) +
-  theme_minimal(base_size = 14)
-ggplot(dac_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)) +
-  geom_tile(color = "white") +
-  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1.4) +
-  labs(x = "Summer Temperature", y = "Spring Temperature", fill = expression(lambda)) +
-  facet_grid(summer.tot.precip ~ trt) +
-  theme_minimal(base_size = 14)
+```{r drought sim}
+#drought_idx <- which(kernel_info$trt == "drought")
+#drought_kernels <- kernels[drought_idx]
+
+#K <- drought_kernels[[sample.int(length(drought_kernels), 1)]]
+stochastic_lambda <- function(kernels, T = 10000, burn = 1000) { #runthe simulation for 10000 years, discarding 1000 years
+
+  n <- nrow(kernels[[1]])
+
+  # initial population - this is a nomralized pop, so doesnt matter the absolute amount
+  N <- rep(1, n)
+  N <- N / sum(N) 
+
+  log_growth <- numeric(T)
+
+  for (t in seq_len(T)) {
+
+    # sample one year's kernel
+    K <- kernels[[sample.int(length(kernels), 1)]] #equal change of each kernel being selected
+
+    N_next <- K %*% N #multiplied pop vector by the selected kernel
+
+    log_growth[t] <- log(sum(N_next)) #get lambda by n/nt+1
+
+    N <- N_next / sum(N_next)
+  }
+
+  exp(mean(log_growth[(burn + 1):T]))
+}
+
+# stoch_lambdas <- replicate(
+#   1000,
+#   stochastic_lambda(kernels)
+# )
+
+control_kernels <- kernels[kernel_info$trt == "control"]
+drought_kernels <- kernels[kernel_info$trt == "drought"]
+irrigated_kernels <- kernels[kernel_info$trt == "irrigated"]
+
+set.seed(123)
+
+control_lambda <- replicate(
+  10000, #run that 10,000 year simulation a thousand times
+  stochastic_lambda(control_kernels)
+)
+
+drought_lambda <- replicate(
+  1000,
+  stochastic_lambda(drought_kernels)
+)
+
+irrigated_lambda <- replicate(
+  1000,
+  stochastic_lambda(irrigated_kernels)
+)
+
+mean(control_lambda)
+quantile(control_lambda, c(0.025, 0.975))
+
+mean(drought_lambda)
+quantile(drought_lambda, c(0.025, 0.975))
+
+mean(irrigated_lambda)
+quantile(irrigated_lambda, c(0.025, 0.975))
+
+
 ```
 
-```{r}
-y_limits <- c(.75, 1.8)
-(summer.temp <- lom_lambda %>%
-  filter(spring.temp == 0, spring.tot.precip == 0) %>% 
-  ggplot(aes(x = summer.mean.max.temp, y = lambda, color = trt)) +
-  geom_line(size = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
-  labs(
-    x = "Summer Max Temperature",
-    y = expression(lambda),
-    color = ""
-  ) )
-(precip <- lom_lambda %>%
-  filter(spring.temp == 0, summer.mean.max.temp == 0) %>% 
-  ggplot(aes(x = spring.tot.precip, y = lambda, color = trt)) +
-  geom_line(size = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
-  labs(
-    x = "Spring Precipitation",
-    y = expression(lambda),
-    color = ""
-  ) )
-(sp.temp <- lom_lambda %>%
-  filter(spring.tot.precip == 0, summer.mean.max.temp == 0) %>% 
-  ggplot(aes(x = spring.temp, y = lambda, color = trt)) +
-  geom_line(size = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
-  labs(
-    x = "Spring Temperature",
-    y = expression(lambda),
-    color = ""
-  ) )
-(together <- summer.temp+precip+sp.temp+ plot_layout(guides = "collect", axis_titles = "collect") &
-  theme(legend.position = "bottom"))
+```{r control sim}
+control_idx <- which(kernel_info$trt == "control")
+control_kernels <- kernels[control_idx]
 
-#ggsave(here("Figures", "lomatium", "lomatium.pop.growth.png"), plot = together, width = 10, height =5)
+K <- control_kernels[[sample.int(length(control_kernels), 1)]]
+stochastic_lambda <- function(kernels, T = 1000, burn = 500) {
 
+  n <- nrow(kernels[[1]])
+
+  # initial population
+  N <- rep(1, n)
+  N <- N / sum(N)
+
+  log_growth <- numeric(T)
+
+  for (t in seq_len(T)) {
+
+    # sample one year's kernel
+    K <- kernels[[sample.int(length(kernels), 1)]]
+
+    N_next <- K %*% N
+
+    log_growth[t] <- log(sum(N_next))
+
+    N <- N_next / sum(N_next)
+  }
+
+  exp(mean(log_growth[(burn + 1):T]))
+}
+
+stoch_lambdas <- replicate(
+  1000,
+  stochastic_lambda(kernels)
+)
+
+mean(stoch_lambdas)
+quantile(stoch_lambdas, c(0.025, 0.975))
 ```
 
+
+
 ```{r}
-(summer.temp <- lom_lambda %>%
-  ggplot(aes(x = prev_summer.mean.max.temp, y = lambda, color = trt)) +
+
+lom_lambda <- do.call(rbind, lamb_lists)
+#y_limits <- c(1.05, 1.2)
+(yearly <- lom_lambda %>%
+  #filter(prev_winter.mean.min.temp ==0) %>% 
+  ggplot(aes(x = Year, y = lambda, color = trt, group = trt)) +
   geom_line(size = 1.2) +
   #scale_y_continuous(limits = y_limits) +
   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
-   theme(legend.position = "bottom")+
   labs(
-    x = "Summer Max Temperature t-1",
+    x = "year",
     y = expression(lambda),
     color = ""
   ) )
 
-ggsave(here("Figures", "lomatium", "lomatium.pop.growth.4.22.png"), plot = summer.temp, width = 6, height =6)
+
+(fall <- ggplot(lom_lambda, aes(x = fall.mean.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+    facet_wrap(~trt)+
+  labs(
+    x = "Fall mean temperature",
+    y = expression(lambda),
+    color = "Year" ))
+(prev.fall <- ggplot(lom_lambda, aes(x = prev_fall.mean.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+    facet_wrap(~trt)+
+  labs(x = "Previous fall mean temperature",
+    y = expression(lambda),
+    color = "Year"))
+
+(sp.precip <- ggplot(lom_lambda, aes(x = spring.tot.precip, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+    facet_wrap(~trt)+
+  labs(
+    x = "Spring total precipitation",
+    y = expression(lambda),
+    color = "Year" ))
+(prev.sp <- ggplot(lom_lambda, aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+    facet_wrap(~trt)+
+  labs(x = "Previous spring mean temperature",
+    y = expression(lambda),
+    color = "Year"))
+# (sp.temp <- dac_lambda %>%
+#   filter(summer.tot.precip == 0, summer.mean.max.temp == 0) %>% 
+#   ggplot(aes(x = spring.temp, y = lambda, color = trt)) +
+#   geom_line(size = 1.2) +
+#   scale_y_continuous(limits = y_limits) +
+#   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+#   labs(
+#     x = "Spring Temperature",
+#     y = expression(lambda),
+#     color = ""
+#   ) )
+ (together <- fall + prev.fall + prev.sp + sp.precip +  plot_layout(guides = "collect", axis_titles = "collect"))
+
+ggsave(here("Figures", "Lomatium", "lom.yearly.pop.growth.png"), plot = yearly, width = 7.5, height =5)
+ggsave(here("Figures", "Lomatium", "yearly.pop.growth.by.climate.png"), plot = together, width = 15, height =8)
 
 ```
 
+
 ```{r}
-y_limits <- range(lom_lambda$lambda)
-
-# Previous spring temperature
-(prev.spring <- lom_lambda %>%
-  filter(fall.mean.temp == 0,
-         prev_fall.mean.temp == 0,
-         spring.tot.precip == 0) %>%
-  ggplot(aes(prev_spring.mean.temp, lambda, color = trt)) +
-  geom_line(linewidth = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(x = "Previous spring temperature",
-       y = expression(lambda),
-       color = ""))
-
-# Fall temperature
-(fall.temp <- lom_lambda %>%
-  filter(prev_spring.mean.temp == 0,
-         prev_fall.mean.temp == 0,
-         spring.tot.precip == 0) %>%
-  ggplot(aes(fall.mean.temp, lambda, color = trt)) +
-  geom_line(linewidth = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(x = "Fall temperature",
-       y = expression(lambda),
-       color = ""))
-
-# Previous fall temperature
-(prev.fall <- lom_lambda %>%
-  filter(prev_spring.mean.temp == 0,
-         fall.mean.temp == 0,
-         spring.tot.precip == 0) %>%
-  ggplot(aes(prev_fall.mean.temp, lambda, color = trt)) +
-  geom_line(linewidth = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(x = "Previous fall temperature",
-       y = expression(lambda),
-       color = ""))
-
-# Spring precipitation
-(spring.precip <- lom_lambda %>%
-  filter(prev_spring.mean.temp == 0,
-         fall.mean.temp == 0,
-         prev_fall.mean.temp == 0) %>%
-  ggplot(aes(spring.tot.precip, lambda, color = trt)) +
-  geom_line(linewidth = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(x = "Spring precipitation",
-       y = expression(lambda),
-       color = ""))
-
-(together <- prev.spring + fall.temp) /
-(prev.fall + spring.precip) +
-plot_layout(guides = "collect") &
-theme(legend.position = "bottom")
-
-ggsave(here("Figures", "lomatium", "lomatium.pop.growth.png"), plot = together, width = 6, height =6)
-
+fall <- ggplot(lom_lambda, aes(x = fall.mean.temp, 
+                               y = lambda, 
+                               color = trt)) +
+  geom_point(aes(shape = factor(Year)), size = 2) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+  facet_wrap(~trt) +
+  labs(
+    x = "Fall mean temperature",
+    y = expression(lambda),
+    color = "Treatment",
+    shape = "Year"
+  )
 ```
 

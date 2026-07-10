@@ -384,7 +384,7 @@ bigmatrix<-function(params_list, mat.size)
   out_lamb <- data.frame(lambda = lambda(IPMmat), spring.mean.temp = params_list$spring.mean.temp, trt = params_list$trt, prev_winter.mean.min.temp = params_list$prev_winter.mean.min.temp, year = params_list$year)
    # return(out_matrix) #can check this to have a list of all of the matrices listed above
  return(out_lamb) #for now, I just want lambdas
-   #return(IPMmat)
+   return(IPMmat)
  # return(list(out_matrix = out_matrix, out_lamb = out_lamb))
 
 }
