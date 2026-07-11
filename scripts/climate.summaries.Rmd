@@ -61,8 +61,12 @@ real <- climate %>%
   select(year, season, measurement, value)%>%
   mutate(season = factor(season,
                          levels = c("spring", "summer", "fall", "winter")))
-normals <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/Cowichan_Annuals/cleaned_data/ClimateWNA.normals.csv")
-normals <- normals %>% 
+normals <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/clean_data/ClimateNA_normals.csv")
+normals <- normals %>%
+  dplyr::select(period, Tave_sp, Tmax_sp, Tmin_sp, PPT_sp, Tmax_wt, Tmin_wt, PPT_wt, Tave_wt, Tmax_at, Tmin_at, PPT_at, Tave_at, Tmax_sm, Tmin_sm, PPT_sm, Tave_sm)
+
+future <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/clean_data/ClimateNA_SSPprojections.csv")
+future <- future %>% 
   dplyr::select(period, Tave_sp, Tmax_sp, Tmin_sp, PPT_sp, Tmax_wt, Tmin_wt, PPT_wt, Tave_wt, Tmax_at, Tmin_at, PPT_at, Tave_at, Tmax_sm, Tmin_sm, PPT_sm, Tave_sm)
 
 past <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/clean_data/ClimateNA_pastdata2000to2024.csv")
@@ -96,6 +100,7 @@ normals_long <- normals %>%
 
 normals_temp <- normals_long %>% filter(grepl("temp", measurement))
 normals_precip <- normals_long %>% filter(measurement == "precip")
+
 
 #Plot temperature histogram
 (p_temp <- ggplot(real_temp, aes(x = value)) +
@@ -139,8 +144,131 @@ ggsave(plot = p_precip, here("Figures","climate","hist.precip.png"), width = 8, 
 
 ```
 
+```{r}
+#same but add in the future values
+fut_long <- future %>%
+  pivot_longer(cols = -period, names_to = "var", values_to = "future_value") %>%
+  mutate(
+    season = case_when(
+      var %in% c("PPT_sp","Tmin_sp","Tmax_sp","Tave_sp") ~ "spring",
+      var %in% c("PPT_wt","Tmin_wt","Tmax_wt","Tave_wt") ~ "winter",
+      var %in% c("PPT_sm","Tmin_sm","Tmax_sm","Tave_sm") ~ "summer",
+      var %in% c("PPT_at","Tmin_at","Tmax_at","Tave_at") ~ "fall"),
+    measurement = case_when(
+      var %in% c("PPT_sp","PPT_wt","PPT_sm","PPT_at") ~ "precip",
+      var %in% c("Tmin_sp","Tmin_wt","Tmin_sm","Tmin_at") ~ "min temp",
+      var %in% c("Tmax_sp","Tmax_wt","Tmax_sm","Tmax_at") ~ "max temp",
+      var %in% c("Tave_sp","Tave_wt","Tave_sm","Tave_at") ~ "mean temp"),
+    period_label = period,
+    full_name = paste(season, measurement, sep = " "))
+
+future_temp <- fut_long %>% filter(grepl("temp", measurement))
+future_precip <- fut_long %>% filter(measurement == "precip")
 
 
+#Plot temperature histogram
+(p_temp <- ggplot(real_temp, aes(x = value)) +
+  geom_histogram(binwidth = .5, fill = "white", color = "black") +
+    facet_wrap(~full_name, scales = "free", nrow = 4) +
+    geom_vline(
+    data = subset(normals_temp, grepl("1971", period)),
+    aes(xintercept = normal_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+        geom_vline(
+    data = subset(future_temp, grepl("2011", period)),
+    aes(xintercept = future_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+  theme_bw() +
+  labs(
+    x = "Temperature (°C)",
+    y = "Count",
+    title = "Histogram of CGOP Temperature Variables with Normals & short term SPP projections",
+    color = "") +
+  scale_color_manual(values = c(  "dodgerblue", "plum" ,"#fb8b24","#9a031e","#0f4c5c")))
+
+#Plot precipitation histogram
+(p_precip <- ggplot(real_precip, aes(x = value)) +
+  geom_histogram(binwidth = 25, fill = "white", color = "black") +
+    geom_vline(
+    data = subset(normals_precip, grepl("1971", period)),
+    aes(xintercept = normal_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+        geom_vline(
+    data = subset(future_precip, grepl("2011", period)),
+    aes(xintercept = future_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+  facet_wrap(~full_name, scales = "free") +
+  theme_bw() +
+  labs(
+    x = "Precipitation (mm)",
+    y = "Count",
+    title = "Histogram of CGOP Precipitation with Normals & short term SPP projections",
+    color = "") +
+  scale_color_manual(values = c(  "dodgerblue", "plum" ,"#fb8b24","#9a031e","#0f4c5c")))
+
+p_temp
+p_precip
+p_temp+p_precip
+
+ggsave(plot = p_temp, here("Figures","climate","hist.spp.temp.png"), width = 10, height = 6)
+ggsave(plot = p_precip, here("Figures","climate","hist.spp.precip.png"), width = 10, height = 6)
+
+
+```
+
+```{r}
+#same but add in the future values
+
+
+#Plot temperature histogram
+(p_temp <- ggplot(real_temp, aes(x = value)) +
+  geom_histogram(binwidth = .5, fill = "white", color = "black") +
+    facet_wrap(~full_name, scales = "free", nrow = 4) +
+    geom_vline(
+    data = subset(normals_temp, grepl("1971", period)),
+    aes(xintercept = normal_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+        geom_vline(
+    data = subset(future_temp, grepl("2041", period)),
+    aes(xintercept = future_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+  theme_bw() +
+  labs(
+    x = "Temperature (°C)",
+    y = "Count",
+    title = "Histogram of CGOP Temperature Variables with Normals & long term SPP projections",
+    color = "") +
+  scale_color_manual(values = c(  "dodgerblue", "plum" ,"#fb8b24","#9a031e","#0f4c5c")))
+
+#Plot precipitation histogram
+(p_precip <- ggplot(real_precip, aes(x = value)) +
+  geom_histogram(binwidth = 25, fill = "white", color = "black") +
+    geom_vline(
+    data = subset(normals_precip, grepl("1971", period)),
+    aes(xintercept = normal_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+        geom_vline(
+    data = subset(future_precip, grepl("2041", period)),
+    aes(xintercept = future_value, color = period_label),
+    linetype = "dashed", linewidth = 1.2) +
+  facet_wrap(~full_name, scales = "free") +
+  theme_bw() +
+  labs(
+    x = "Precipitation (mm)",
+    y = "Count",
+    title = "Histogram of CGOP Precipitation with Normals & long term SPP projections",
+    color = "") +
+  scale_color_manual(values = c(  "dodgerblue", "plum" ,"#fb8b24","#9a031e","#0f4c5c")))
+
+p_temp
+p_precip
+p_temp+p_precip
+
+ggsave(plot = p_temp, here("Figures","climate","hist.spp.long.temp.png"), width = 10, height = 6)
+ggsave(plot = p_precip, here("Figures","climate","hist.spp.long.precip.png"), width = 10, height = 6)
+
+
+```
 ```{r}
 (raw.norm <- ggplot(real, aes(x = year, y = value)) +
   geom_line(group = 1) +
@@ -180,6 +308,55 @@ ggsave(plot = all.together, here("Figures","climate", "raw.data.mean.with.normal
 
 
 ```
+
+```{r samew thing but add in the spp data}
+real_means <- real %>%
+  group_by(season, measurement) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>% 
+    mutate(full_name = paste(season, measurement, sep = " "))
+
+(raw.norm.spp.long <- ggplot(real, aes(x = year, y = value)) +
+  geom_line(group = 1) +
+  geom_hline(data = subset(normals_long, grepl("1971", period)),
+             aes(yintercept = normal_value, colour = period), linetype = "dashed", linewidth = 1.2) +
+  geom_hline(data = subset(fut_long, grepl("2041", period)),
+             aes(yintercept = future_value, colour = period), linetype = "dashed", linewidth = 1.2) +
+  geom_hline(data = real_means,
+             aes(yintercept = mean_value),
+             colour = "grey30",
+             linewidth = 0.7) +
+  facet_wrap(~full_name, scales = "free_y") +
+  scale_color_manual(values = c(  "dodgerblue", "plum" ,"#fb8b24","#9a031e","#0f4c5c"))+
+  theme_bw(base_size = 15) +
+  labs(x = "", y = "Temp/Precip") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+
+ggsave(plot = raw.norm.spp.long, here("Figures","climate", "raw.data.with.normals.spp.png"), width = 15, height = 10)
+
+
+#now shorter term
+(raw.norm.spp.short <- ggplot(real, aes(x = year, y = value)) +
+  geom_line(group = 1) +
+  geom_hline(data = subset(normals_long, grepl("1971", period)),
+             aes(yintercept = normal_value, colour = period), linetype = "dashed", linewidth = 1.2) +
+  geom_hline(data = subset(fut_long, grepl("2040", period)),
+             aes(yintercept = future_value, colour = period), linetype = "dashed", linewidth = 1.2) +
+  geom_hline(data = real_means,
+             aes(yintercept = mean_value),
+             colour = "grey30",
+             linewidth = 0.7) +
+  facet_wrap(~full_name, scales = "free_y") +
+  scale_color_manual(values = c(  "dodgerblue", "plum" ,"#fb8b24","#9a031e","#0f4c5c"))+
+  theme_bw(base_size = 15) +
+  labs(x = "", y = "Temp/Precip") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+
+ggsave(plot = raw.norm.spp.short, here("Figures","climate", "raw.data.with.normals.spp.long.png"), width = 15, height = 10)
+
+
+```
+
 
 ```{r}
 #Now, I wnat a figure that shows summer max temp and spring precip from weather station data, compared to climate NA past data
