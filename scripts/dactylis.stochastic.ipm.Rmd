@@ -23,6 +23,9 @@ climate<- climate %>%
   arrange(year) %>%
   mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))
 
+future.climate <- read.csv(here("clean_data", "CGOP_future_climate_values.csv"))
+
+
 dac <- left_join(dac, climate, by = c("Year" = "year"))
 dac <- dac %>% 
   mutate(Year = as.factor(Year), 
@@ -101,7 +104,7 @@ plot_summary <- plot_summary %>%
  # ungroup() %>% 
   mutate(germ.rate = seedlings_t/panicles_tminus1) %>% 
   filter(is.finite(germ.rate))
-#pest <- mean(plot_summary$germ.rate) #so 0.1 seems really high! One panicle has a 10% chance of making seeds...
+#pest <- mean(plot_summary$germ.rate) #so 0.1 seems really high! One panicle has a 10% chance of making a seedling...
 pest <- .0001
 
 pest.sd <- sd(plot_summary$germ.rate)
@@ -110,7 +113,7 @@ max(plot_summary$germ.rate)
 #this is coarse! But ok for the first stab
 ```
 
-```{r parameters , echo=FALSE}
+```{r parameters}
 #this is for range of climates spring.mean.temp, prev_spring.mean.temp, summer.tot.precip, winter.mean.min.temp, prev_winter.tot.precip
 
 # rows <- expand.grid(summer.tot.precip = seq(-2, 2, by = 1), prev_spring.mean.temp = seq(-2, 2, by = 1),  spring.mean.temp = seq(-2, 2, by = 1),prev_winter.tot.precip = seq(-2, 2, by = 1),winter.mean.min.temp = seq(-2, 2, by = 1)) 
@@ -134,6 +137,9 @@ params=data.frame(
 	pest = NA
 )
 params <- bind_cols(params, rows)
+
+scenarios <- expand.grid(scenario = c("current", "future1", "future2"))
+params <- crossing(params, scenarios)
 
 #adding in random effects
 #growth
@@ -177,6 +183,9 @@ params <- params %>%
       c(growth_re, pflower_re, no.flow_re,
         surv_re),
       ~ tidyr::replace_na(., 0)))
+
+params <- params %>% 
+  filter(Year!="2026")
 ```
 
 ```{r}
@@ -229,8 +238,7 @@ params$pest <- pest
 params$recruit.size.mean <- new_mean # mean new 
 params$recruit.size.sd<- new_sd # sd of new 
 
-params <- params %>% 
-  filter(Year!="2026")
+
 ```
 
 ```{r}

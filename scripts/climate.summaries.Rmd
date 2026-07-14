@@ -19,6 +19,41 @@ theme_set(theme_classic(base_size = 18)) #for ggplot
 climate <- read.csv(here("clean_data", "CGOP_climatevalues.csv"))
 climate <- climate %>% 
   mutate(year = as.character(year))
+
+#first, figure out what to add to current temps (as a scaled value) to simulation future temperatures
+## in the ipm codes, the future 1 and 2 values will be added to the annual values used in the IPM kernels
+sds <- climate %>%
+  select(ends_with(".temp"), ends_with("tot.precip")) %>%
+  summarise(
+    across(
+      everything(),
+      list(
+        mean = \(x) mean(x, na.rm = TRUE),
+        sd = \(x) sd(x, na.rm = TRUE)
+      )
+    )
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = c("variable", ".value"),
+    names_sep = "_"
+  ) %>%
+  mutate(
+    future1 = case_when(
+      grepl("temp", variable) ~ 1 / sd,
+      grepl("summer.tot.precip", variable) ~ (-0.10 * mean) / sd,
+      grepl("spring.tot.precip|winter.tot.precip|fall.tot.precip", variable) ~ (0.10 * mean) / sd
+    ),
+    
+    future2 = case_when(
+      grepl("temp", variable) ~ 2 / sd,
+      grepl("summer.tot.precip", variable) ~ (-0.50 * mean) / sd,
+      grepl("spring.tot.precip|winter.tot.precip|fall.tot.precip", variable) ~ (0.50 * mean) / sd
+    )
+  )
+write.csv(sds, here("clean_data", "CGOP_future_climate_values.csv"), row.names = FALSE)
+
+
 # scaling the climate variables
 climate_scale <- climate %>% 
   select(1, c(ends_with("tot.precip"), ends_with(".temp")))
