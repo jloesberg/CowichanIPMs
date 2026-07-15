@@ -110,13 +110,36 @@ plot_summary <- plot_summary %>%
   drop_na() %>% 
  # ungroup() %>% 
   mutate(germ.rate = seedlings_t/panicles_tminus1) %>% 
-  filter(is.finite(germ.rate))
-#pest <- mean(plot_summary$germ.rate) #so 0.1 seems really high! One panicle has a 10% chance of making a seedling...
-pest <- .0001
+  filter(is.finite(germ.rate),
+         Year!=2019)%>%
+  group_by(Year) %>%
+  summarise(
+    mean_germ = mean(germ.rate, na.rm = TRUE),
+    median_germ = median(germ.rate, na.rm = TRUE),
+    sd_germ = sd(germ.rate, na.rm = TRUE),
+    pest = sum(seedlings_t) / sum(panicles_tminus1),
+    seedlingst = sum(seedlings_t),
+    panicles_tminus1 = sum(panicles_tminus1),
+    n = n(),
+    .groups = "drop"
+  ) |> 
+  select(Year, pest)
+mean_est <- mean(plot_summary$pest, na.rm = TRUE)
 
-pest.sd <- sd(plot_summary$germ.rate)
-min(plot_summary$germ.rate)
-max(plot_summary$germ.rate)
+pest <- bind_rows(
+  tibble(
+    Year = c("2016", "2019"),
+    pest = c(mean_est, mean_est)
+  ),
+  plot_summary
+) %>%
+  arrange(Year)
+
+#pest <- .0001
+# 
+# pest.sd <- sd(plot_summary$germ.rate)
+# min(plot_summary$germ.rate)
+# max(plot_summary$germ.rate)
 #this is coarse! But ok for the first stab
 ```
 
@@ -140,8 +163,7 @@ params=data.frame(
 	no.flow.int=NA,
 	no.flow.slope=NA,
 	recruit.size.mean=NA,
-	recruit.size.sd=NA,
-	pest = NA
+	recruit.size.sd=NA
 )
 params <- bind_cols(params, rows)
 
@@ -243,6 +265,10 @@ params <- params %>%
 
 params <- params %>% 
   filter(Year!="2026")
+
+params <- params %>%
+  left_join(pest, by = "Year") |> 
+  mutate(pest = ifelse(is.na(pest), mean_est, pest))
 ```
 
 ```{r}
@@ -291,7 +317,9 @@ params$surv.slope <- survival["log.no.stems"] +
 
 
 #params$no.seeds <- no.seeds
-params$pest <- pest
+# params$pest <- pest
+
+
 params$recruit.size.mean <- new_mean # mean new 
 params$recruit.size.sd<- new_sd # sd of new 
 
@@ -431,39 +459,49 @@ kernel_info <- params %>%
 #lom_lambda <- do.call(rbind, lamb_lists)
 #y_limits <- c(1.05, 1.2)
 (yearly <- dac_lambda %>%
+   filter(scenario == "current") |> 
   ggplot(aes(x = Year, y = lambda, group = 1)) +
   geom_line(size = 1.2) +
   geom_point(size = 1.2) +
-   facet_wrap(~scenario) +
   labs(
     x = "year",
     y = expression(lambda)) )
 
 
-(wt.p <- ggplot(dac_lambda, aes(x = prev_winter.tot.precip, y = lambda, color = factor(Year))) +
+(wt.p <- dac_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot( aes(x = prev_winter.tot.precip, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
   labs(
     x = "Previous winter precipitation",
     y = expression(lambda),
     color = "Year" ))
-(sm.p <- ggplot(dac_lambda, aes(x = summer.tot.precip, y = lambda, color = factor(Year))) +
+(sm.p <- dac_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot(aes(x = summer.tot.precip, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
   labs(x = "Summer precipitation",
     y = expression(lambda),
     color = "Year"))
 
-(wt.t<- ggplot(dac_lambda, aes(x = winter.mean.min.temp, y = lambda, color = factor(Year))) +
+(wt.t<- dac_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot(aes(x = winter.mean.min.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
   labs(
     x = "Winter min temperature",
     y = expression(lambda),
     color = "Year" ))
-(prev.sp <- ggplot(dac_lambda, aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
+(prev.sp <- dac_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
   labs(x = "Previous spring mean temperature",
     y = expression(lambda),
     color = "Year"))
-(sp <- ggplot(dac_lambda, aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
+(sp <- dac_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot(aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
   labs(x = "Spring mean temperature",
     y = expression(lambda),

@@ -1,0 +1,11 @@
+"0","plot_summary <- dac %>%
+  group_by(Plot, Year) %>%
+  summarise(
+    seedlings_t = sum(stage == ""seedling"", na.rm = TRUE),
+    panicles_t = sum(No.panicles, na.rm = TRUE),
+    .groups = ""drop"") %>% 
+  drop_na()
+"
+"2","Error in plot_summary %>% arrange(Plot, Year) %>% group_by(Plot) %>% mutate(panicles_tminus1 = lag(panicles_t)) %>%  : 
+  could not find function ""%>%<-""
+"

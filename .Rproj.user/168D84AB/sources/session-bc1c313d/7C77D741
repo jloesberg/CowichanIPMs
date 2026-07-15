@@ -3,7 +3,7 @@
     "path": "~/GitHub/CowichanIPMs/scripts/dactylis.stochastic.ipm.Rmd",
     "project_path": "scripts/dactylis.stochastic.ipm.Rmd",
     "type": "r_markdown",
-    "hash": "3028521329",
+    "hash": "500718193",
     "contents": "",
     "dirty": false,
     "created": 1784069977340.0,
@@ -12,15 +12,15 @@
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "114,12",
-        "scrollLine": "94"
+        "cursorPosition": "409,8",
+        "scrollLine": "359"
     },
     "folds": "",
-    "lastKnownWriteTime": 1784081962,
+    "lastKnownWriteTime": 1784135964,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1784081962144,
+    "last_content_update": 1784135964091,
     "read_only": false,
     "read_only_alternatives": []
 }

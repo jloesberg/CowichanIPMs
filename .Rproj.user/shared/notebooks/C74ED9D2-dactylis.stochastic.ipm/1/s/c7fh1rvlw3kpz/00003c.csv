@@ -1,8 +1,0 @@
-"0",""
-"0",""
-"0","(wt.p <- ggplot(dac_lambda, aes(x = prev_winter.tot.precip, y = lambda, color = factor(Year))) +"
-"0","  geom_point(size = 2) +"
-"0","  labs("
-"0","    x = ""Previous winter precipitation"","
-"0","    y = expression(lambda),"
-"0","    color = ""Year"" ))"

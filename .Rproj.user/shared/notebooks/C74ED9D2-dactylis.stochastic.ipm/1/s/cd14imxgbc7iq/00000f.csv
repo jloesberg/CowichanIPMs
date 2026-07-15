@@ -44,7 +44,12 @@
 "0",""
 "0","#params$no.seeds <- no.seeds"
 "0","params$pest <- pest"
-"0","params$recruit.size.mean <- new_mean # mean new "
-"0","params$recruit.size.sd<- new_sd # sd of new "
-"0",""
-"0",""
+"1","[1m[33mError[39m in `$<-`:[22m
+[38;5;232m[33m![38;5;232m Assigned data `pest` must be compatible with existing data.
+[31m✖[38;5;232m Existing data has 31 rows.
+[31m✖[38;5;232m Assigned data has 11 rows.
+[36mℹ[38;5;232m Only vectors of size 1 are recycled.[39m
+[1mCaused by error in `vectbl_recycle_rhs_rows()`:[22m
+[33m![39m Can't recycle input of size 11 to size 31.
+[90mRun `]8;;x-r-run:rlang::last_trace()rlang::last_trace()]8;;` to see where the error occurred.[39m
+"
