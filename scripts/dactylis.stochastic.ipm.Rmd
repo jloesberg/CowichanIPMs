@@ -519,6 +519,15 @@ kernel_info <- params %>%
 #   ) )
  (together <- (wt.p + wt.t)/ (prev.sp + sp) / (sm.p +  plot_spacer())+  plot_layout(guides = "collect"))
 
+(yearly <- dac_lambda %>%
+  ggplot(aes(x = Year, y = lambda, group = 1)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 1.2) +
+  facet_wrap(~scenario)+
+  labs(
+    x = "year",
+    y = expression(lambda)) )
+
 ggsave(here("Figures", "Dactylis", "dac.yearly.pop.growth.png"), plot = yearly, width = 7.5, height =5)
 ggsave(here("Figures", "Dactylis", "yearly.pop.growth.by.climate.png"), plot = together, width = 12, height =8)
 
