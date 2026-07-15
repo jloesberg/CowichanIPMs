@@ -1,0 +1,7 @@
+"0",""
+"0","(wt.t<- ggplot(dac_lambda, aes(x = winter.mean.min.temp, y = lambda, color = factor(Year))) +"
+"0","  geom_point(size = 2) +"
+"0","  labs("
+"0","    x = ""Winter min temperature"","
+"0","    y = expression(lambda),"
+"0","    color = ""Year"" ))"

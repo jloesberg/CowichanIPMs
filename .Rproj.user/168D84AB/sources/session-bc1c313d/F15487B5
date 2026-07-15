@@ -1,0 +1,28 @@
+{
+    "id": "F15487B5",
+    "path": null,
+    "project_path": null,
+    "type": "object_explorer",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1784070430147.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "id": "203d951764cb42f58cbd664f0cb79bed",
+        "name": "fm.prev_spring.mean.temp",
+        "title": "fm.prev_spring.mean.temp",
+        "language": "R",
+        "source_window_id": "",
+        "Source": "Source"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 4610321461861375030,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1784070430147,
+    "read_only": false,
+    "read_only_alternatives": []
+}

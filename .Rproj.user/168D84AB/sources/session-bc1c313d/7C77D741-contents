@@ -24,6 +24,13 @@ climate<- climate %>%
   mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))
 
 future.climate <- read.csv(here("clean_data", "CGOP_future_climate_values.csv"))
+# future.climate <- future.climate %>%
+#   select(variable, future1, future2) %>%
+#   pivot_wider(
+#     names_from = variable,
+#     values_from = c(future1, future2),
+#     names_glue = "{variable}_{.value}"
+#   )
 
 
 dac <- left_join(dac, climate, by = c("Year" = "year"))
@@ -141,6 +148,40 @@ params <- bind_cols(params, rows)
 scenarios <- expand.grid(scenario = c("current", "future1", "future2"))
 params <- crossing(params, scenarios)
 
+#add in the future climate variables
+climate_vars <- future.climate$variable
+
+for (v in climate_vars) {
+
+  # Skip variables not present in params
+  if (v %in% names(params)) {
+
+    delta1 <- future.climate$future1[future.climate$variable == v]
+    delta2 <- future.climate$future2[future.climate$variable == v]
+
+    params[[v]] <- case_when(
+      params$scenario == "current" ~ params[[v]],
+      params$scenario == "future1" ~ params[[v]] + delta1,
+      params$scenario == "future2" ~ params[[v]] + delta2
+    )
+  }
+
+  # Update corresponding prev_ variable if it exists
+  prev_v <- paste0("prev_", v)
+
+  if (prev_v %in% names(params)) {
+
+    delta1 <- future.climate$future1[future.climate$variable == v]
+    delta2 <- future.climate$future2[future.climate$variable == v]
+
+    params[[prev_v]] <- case_when(
+      params$scenario == "current" ~ params[[prev_v]],
+      params$scenario == "future1" ~ params[[prev_v]] + delta1,
+      params$scenario == "future2" ~ params[[prev_v]] + delta2
+    )
+  }
+}
+
 #adding in random effects
 #growth
 re_year_growth <- ranef(gm.su.sp)$Year %>%
@@ -175,7 +216,23 @@ re_year_no.flow <- ranef(poisson.sp.wt.int2)$Year %>%
 params <- params %>%
   left_join(re_year_no.flow, by = "Year") 
 
- 
+### add in a average year for the SSD for the projections
+climate_cols <- c(
+  "spring.mean.temp",
+  "prev_spring.mean.temp",
+  "summer.tot.precip",
+  "winter.mean.min.temp",
+  "prev_winter.tot.precip"
+)
+
+base_row <- params[1, ]
+
+base_row[] <- NA
+base_row$Year <- "base"
+base_row$scenario <- "base"
+base_row[climate_cols] <- 0
+
+params <- bind_rows(base_row, params)
 
 #for any years without data, make 0 (average RE)
 params <- params %>%
@@ -338,6 +395,7 @@ bigmatrix <- function(params_list, mat.size){
 
   out_lamb <- data.frame(
     Year = params_list$Year,
+    scenario = params_list$scenario,
     lambda = lambda(IPMmat),
     prev_spring.mean.temp = params_list$prev_spring.mean.temp,
     winter.mean.min.temp = params_list$winter.mean.min.temp,
@@ -354,12 +412,12 @@ return(list(
 }
 
 #what I want returned is lambdas
-lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
+#lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
 
 #great~! now make it a df
 results <- lapply(params_list, bigmatrix, mat.size = mat.size)
 
-dac_lambda <- do.call(rbind, lapply(results, function(x) x$lambda))
+dac_lambda <- do.call(rbind, lapply(results, function(x) x$lambda)) #run this one to get df of lambdas
 
 kernels <- lapply(results, function(x) x$IPMmat)
 kernel_info <- params %>%
@@ -375,6 +433,8 @@ kernel_info <- params %>%
 (yearly <- dac_lambda %>%
   ggplot(aes(x = Year, y = lambda, group = 1)) +
   geom_line(size = 1.2) +
+  geom_point(size = 1.2) +
+   facet_wrap(~scenario) +
   labs(
     x = "year",
     y = expression(lambda)) )
@@ -426,114 +486,137 @@ ggsave(here("Figures", "Dactylis", "yearly.pop.growth.by.climate.png"), plot = t
 
 ```
 
+```{r}
 
 
-```{r  sim}
-
-
-stochastic_lambda <- function(kernels, T = 100, burn = 1) { #run the simulation for 50 years
-
-  n <- nrow(kernels[[1]])
-
-  # initial population - this is a nomralized pop, so doesnt matter the absolute amount
-  N <- rep(1, n)
-  N <- N / sum(N) 
-
-  log_growth <- numeric(T)
-
-  for (t in seq_len(T)) {
-
-    # sample one year's kernel
-    K <- kernels[[sample.int(length(kernels), 1)]] #equal change of each kernel being selected
-
-    N_next <- K %*% N #multiplied pop vector by the selected kernel
-
-    log_growth[t] <- log(sum(N_next)) #get lambda by n/nt+1
-
-    N <- N_next / sum(N_next)
+# Base kernel (single kernel)
+base_kernel <- kernels[[which(dac_lambda$scenario == "base")]]
+#
+get_ssd <- function(base_kernel, N0, years) {
+  
+  # initial population distribution
+  n <- rep(N0 / nrow(base_kernel), nrow(base_kernel))
+  
+  # project population for specified number of years
+  for(i in 1:years) {
+    
+    n <- base_kernel %*% n
+    
+    # keep abundance constant, retain size distribution
+    n <- n / sum(n) * N0
   }
-
-  exp(mean(log_growth[(burn + 1):T]))
+  
+  # stable size distribution
+  ssd <- n / sum(n)
+  
+  return(ssd)
 }
 
-# stoch_lambdas <- replicate(
-#   1000,
-#   stochastic_lambda(kernels)
-# )
-# 
-# control_kernels <- kernels[kernel_info$trt == "control"]
-# drought_kernels <- kernels[kernel_info$trt == "drought"]
-# irrigated_kernels <- kernels[kernel_info$trt == "irrigated"]
-
-set.seed(123)
-
-stoch_lambda <- replicate(
-  100, #run that X year simulation Y times
-  stochastic_lambda(kernels)
-)
-
-
-mean(stoch_lambda)
-quantile(stoch_lambda, c(0.025, 0.975))
-
-mean(drought_lambda)
-quantile(drought_lambda, c(0.025, 0.975))
-
-mean(irrigated_lambda)
-quantile(irrigated_lambda, c(0.025, 0.975))
-
-
+# simulate 100 years to get SSD
+ssd <- get_ssd(base_kernel, N0 = 1000, years = 100) #this will be used for all of the simualtions
 ```
+
 
 ```{r}
-stochastic_sim <- function(kernels, T = 1000) {
+scenario_names <- setdiff(unique(dac_lambda$scenario), "base")
 
-  n <- nrow(kernels[[1]])
+scenario_kernels <- lapply(scenario_names, function(sc) {
+  kernels[dac_lambda$scenario == sc]
+})
+names(scenario_kernels) <- scenario_names
 
-  N <- rep(1, n)
-  N <- N / sum(N)
-
-  pop_size <- numeric(T + 1)
-  pop_size[1] <- sum(N)
-
-  kernel_used <- integer(T)
-
-  for (t in seq_len(T)) {
-
-    k <- sample.int(length(kernels), 1)
-    kernel_used[t] <- k
-
-    N <- kernels[[k]] %*% N
-    pop_size[t + 1] <- sum(N)
+stochastic_ipm <- function(scenario_kernels, ssd, N0, years, reps) {
+  
+  lambda_summary <- list()
+  
+  for(sc in names(scenario_kernels)) {
+    
+    kernel_list <- scenario_kernels[[sc]]
+    
+    # store one stochastic lambda per replicate
+    rep_lambda <- numeric(reps)
+    
+    for(r in 1:reps) {
+      
+      # start from stable size distribution
+      n <- ssd * N0
+      
+      annual_lambda <- numeric(years)
+      
+      for(t in 1:years) {
+        
+        N_before <- sum(n)
+        
+        # sample kernel only within this scenario
+        K <- kernel_list[[sample(seq_along(kernel_list), 1)]]
+        
+        # project population
+        n <- K %*% n
+        
+        N_after <- sum(n)
+        
+        # annual growth rate
+        annual_lambda[t] <- N_after / N_before
+      }
+      
+      # stochastic lambda for this replicate
+      rep_lambda[r] <- exp(mean(log(annual_lambda)))
+    }
+    
+    # mean stochastic lambda across replicates
+    lambda_s <- exp(mean(log(rep_lambda)))
+    
+    # confidence interval among replicate stochastic lambdas
+    lambda_CI <- quantile(rep_lambda, c(0.025, 0.975))
+    
+    lambda_summary[[sc]] <- data.frame(
+      scenario = sc,
+      stochastic_lambda = lambda_s,
+      lower_CI = lambda_CI[1],
+      upper_CI = lambda_CI[2]
+    )
   }
-
-  # list(
-  #   pop_size = pop_size,
-  #   kernels = kernel_used
-  # )
-  return(pop_size)
+  
+  return(do.call(rbind, lambda_summary))
 }
-sim <- stochastic_sim(kernels, T = 100) #runs that function once
 
-sims <- replicate(
-  100,
-  stochastic_sim(kernels, T = 100)
+stoch_lambda <- stochastic_ipm(
+  scenario_kernels = scenario_kernels,
+  ssd = ssd,
+  N0 = 1000,
+  years = 100,
+  reps = 10000
 )
-
-dim(sims)
-
-
-matplot(
-  x = 0:100,
-  y = sims,
-  type = "l",
-  lty = 1,
-  col = rgb(0, 0, 1, 0.2),
-  xlab = "Year",
-  ylab = "Population size"
-)
-
-# plot(sim$pop_size, type = "l")
-# head(sim$kernels)
 ```
+
+
+```{r}
+(
+lam.s <- ggplot(stoch_lambda, 
+       aes(x = scenario, y = stochastic_lambda)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI),
+                width = 0.15,
+                linewidth = 1) +
+  geom_hline(yintercept = 1, 
+             linetype = "dashed", 
+             color = "grey") +
+  scale_x_discrete(
+    labels = c(
+      "current" = "Current",
+      "future1" = "1° warmer",
+      "future2" = "2° warmer"
+    )
+  ) +
+  labs(
+    x = "",
+    y = "Stochastic lambda (λs)",
+    title = "Dactylis"
+  ))
+
+ggsave(here("Figures", "Dactylis", "STOCH_LAM_SCEN.png"), plot = lam.s, width = 6, height =5)
+
+```
+
+
 
