@@ -1,5 +1,3 @@
-"0",""
-"0",""
 "0","# Base kernel (single kernel)"
 "0","base_kernel <- kernels[[which(dac_lambda$scenario == ""base"")]]"
 "0","#"

@@ -1,0 +1,13 @@
+"0","# create one perturbed row per parameter
+params.sens <- bind_rows(
+  params.sens %>% mutate(parameter = ""baseline""),
+  lapply(perturb_params, function(p) {
+    x <- params.sens
+    x[[p]] <- x[[p]] * 1.1
+    x$parameter <- p
+    x
+  })
+)
+"
+"2","Error: object 'perturb_params' not found
+"

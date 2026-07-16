@@ -70,7 +70,7 @@ sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.
 poisson.sp.wt.int2 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
 
 dac.new <- dac %>% 
-  filter(stage == "seedling") %>% 
+  filter(stage == "seedling" & No.stems<2) %>% 
   group_by(plantid) %>%
   slice_min(as.numeric(as.character(Year)), n = 1, with_ties = FALSE)
 #parameters for new plants
@@ -83,8 +83,8 @@ minRealsize <- min(dac$log.no.stems, na.rm=T)
 maxRealsize <- 1.1* max(dac$log.no.stems,na.rm=T)
 
 #now add a new min & max size to keep the plants in for eviction
-##note: this could be wrong for dactylis because -1 log. no stems seem weird! Would be .1 stems
-min.size <-minRealsize-1 #lower
+## min size is 1 stem! cant be smaller
+min.size <-minRealsize #lower
 max.size <-maxRealsize+1.5 #upper
 
 climate <- climate %>% 
@@ -97,9 +97,10 @@ climate <- climate %>%
 #panciles in year t is a function of the number of panicles in the plot in the year prior
 #so to get the transition rate: number of seedlings in t/#panciles year t-1 (PER PLOT - for now)
 plot_summary <- dac %>%
+
   group_by(Plot, Year) %>%
   summarise(
-    seedlings_t = sum(stage == "seedling", na.rm = TRUE),
+    seedlings_t = sum(stage == "seedling" & No.stems < 2, na.rm = TRUE),
     panicles_t = sum(No.panicles, na.rm = TRUE),
     .groups = "drop") %>% 
   drop_na()
@@ -123,7 +124,8 @@ plot_summary <- plot_summary %>%
     n = n(),
     .groups = "drop"
   ) |> 
-  select(Year, pest)
+  select(Year, pest) |> 
+  filter(Year != "2026")
 mean_est <- mean(plot_summary$pest, na.rm = TRUE)
 
 pest <- bind_rows(
@@ -386,7 +388,12 @@ recruit.size<-function(y,params){
 ```
 
 ```{r}
-params_list <-  filter(params) %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
+params <- params %>%
+  mutate(kernel_id = row_number())
+
+params_list <- params %>%
+  split(.$kernel_id)
+#params_list <-  filter(params) %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
 
 ###
 mat.size = 100 #dimensions of continuous matrix
@@ -429,7 +436,8 @@ bigmatrix <- function(params_list, mat.size){
     winter.mean.min.temp = params_list$winter.mean.min.temp,
     summer.tot.precip = params_list$summer.tot.precip,
     spring.mean.temp = params_list$spring.mean.temp,
-    prev_winter.tot.precip= params_list$prev_winter.tot.precip)
+    prev_winter.tot.precip= params_list$prev_winter.tot.precip,
+    kernel_id = params_list$kernel_id)
 
 return(list(
   IPMmat = IPMmat,
@@ -456,8 +464,6 @@ kernel_info <- params %>%
 
 ```{r yearly lambda figure}
 
-#lom_lambda <- do.call(rbind, lamb_lists)
-#y_limits <- c(1.05, 1.2)
 (yearly <- dac_lambda %>%
    filter(scenario == "current") |> 
   ggplot(aes(x = Year, y = lambda, group = 1)) +
@@ -534,8 +540,6 @@ ggsave(here("Figures", "Dactylis", "yearly.pop.growth.by.climate.png"), plot = t
 ```
 
 ```{r}
-
-
 # Base kernel (single kernel)
 base_kernel <- kernels[[which(dac_lambda$scenario == "base")]]
 #
@@ -564,7 +568,7 @@ ssd <- get_ssd(base_kernel, N0 = 1000, years = 100) #this will be used for all o
 ```
 
 
-```{r}
+```{r stochastic ipm where climate is 1-2 deg warmer/precip changes}
 scenario_names <- setdiff(unique(dac_lambda$scenario), "base")
 
 scenario_kernels <- lapply(scenario_names, function(sc) {
@@ -661,9 +665,271 @@ lam.s <- ggplot(stoch_lambda,
     title = "Dactylis"
   ))
 
-ggsave(here("Figures", "Dactylis", "STOCH_LAM_SCEN.png"), plot = lam.s, width = 6, height =5)
+ggsave(here("Figures", "Dactylis", "STOCH_LAM_SCENARIOS.png"), plot = lam.s, width = 6, height =5)
 
 ```
 
+```{r}
+#just make bad years more common - say, 3 years where climate is warmest/driest
+#filter out the current scenarios
+current_idx <- params$kernel_id[params$scenario == "current"]
 
+kernels_current <- kernels[current_idx]
+
+kernel_info_current <- params %>%
+  filter(scenario == "current") %>%
+  select(kernel_id, Year, scenario, summer.tot.precip)
+identical(
+  names(kernels_current),
+  as.character(kernel_info_current$kernel_id)
+)
+
+dry_years <- kernel_info_current %>%
+  arrange(summer.tot.precip) %>%
+  slice(1:3) %>%
+  pull(Year)
+
+drought_options <- c(
+  normal = 1,
+  drought_1.5x = 1.5,
+  drought_2x = 2,
+  drought_3x = 3
+)
+
+weight_list <- lapply(drought_options, function(mult) {
+  
+  ifelse(
+    kernel_info_current$Year %in% dry_years,
+    mult,
+    1
+  )
+})
+
+names(weight_list) <- names(drought_options)
+
+stochastic_ipm <- function(kernels, kernel_info, ssd, N0, years, reps) {
+  
+  rep_lambda <- numeric(reps)
+  
+  for(r in 1:reps) {
+    
+    n <- ssd * N0
+    annual_lambda <- numeric(years)
+    
+    for(t in 1:years) {
+      
+      N_before <- sum(n)
+      
+      K <- kernels[[sample(
+        seq_along(kernels),
+        1,
+        prob = kernel_info$weight
+      )]]
+      
+      n <- K %*% n
+      
+      N_after <- sum(n)
+      annual_lambda[t] <- N_after / N_before
+    }
+    
+    rep_lambda[r] <- exp(mean(log(annual_lambda)))
+  }
+  
+  data.frame(
+    stochastic_lambda = exp(mean(log(rep_lambda))),
+    lower_CI = quantile(rep_lambda, 0.025),
+    upper_CI = quantile(rep_lambda, 0.975)
+  )
+}
+
+# stoch_lambda_freq <- stochastic_ipm(
+#   kernels = kernels_current,
+#   kernel_info = kernel_info_current %>%
+#     mutate(weight = weight_list$normal),
+#   ssd = ssd,
+#   N0 = 1000,
+#   years = 100,
+#   reps = 10000
+# )
+
+stoch_lambda_freq <- lapply(names(weight_list), function(scn) {
+  
+  stochastic_ipm(
+    kernels = kernels_current,
+    kernel_info = kernel_info_current %>%
+      mutate(weight = weight_list[[scn]]),
+    ssd = ssd,
+    N0 = 1000,
+    years = 100,
+    reps = 10000
+  ) %>%
+    mutate(drought_scenario = scn)
+  
+}) %>%
+  bind_rows()
+
+stoch_lambda_freq |> 
+  mutate(
+    drought_scenario = factor(
+      drought_scenario,
+      levels = c("normal", "drought_1.5x", "drought_2x", "drought_3x")
+    )
+  ) |> 
+ggplot(
+       aes(x = drought_scenario, 
+           y = stochastic_lambda)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = 0.1) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(x = "",
+       y = expression(stochastic~lambda))
+```
+
+```{r}
+kernel_info_current <- params %>%
+  filter(scenario == "current") %>%
+  select(
+    kernel_id,
+    Year,
+    scenario,
+    summer.tot.precip,
+    spring.mean.temp,
+    prev_spring.mean.temp,
+    winter.mean.min.temp,
+    prev_winter.tot.precip
+  )
+
+run_climate_frequency <- function(kernels,
+                                  kernel_info,
+                                  climate_var,
+                                  extreme = "high",
+                                  multipliers = c(1, 1.5, 2, 3),
+                                  ssd,
+                                  N0 = 1000,
+                                  years = 100,
+                                  reps = 10000) {
+  
+  # identify extreme years
+  if(extreme == "high") {
+    extreme_years <- kernel_info %>%
+      arrange(desc(.data[[climate_var]])) %>%
+      slice(1:3) %>%
+      pull(Year)
+  } else {
+    extreme_years <- kernel_info %>%
+      arrange(.data[[climate_var]]) %>%
+      slice(1:3) %>%
+      pull(Year)
+  }
+  
+  # scenario names
+  scenario_names <- c(
+    "normal",
+    "1.5x",
+    "2x",
+    "3x"
+  )
+  
+  # run each frequency scenario
+  results <- lapply(seq_along(multipliers), function(i) {
+    
+    weights <- ifelse(
+      kernel_info$Year %in% extreme_years,
+      multipliers[i],
+      1
+    )
+    
+    stochastic_ipm(
+      kernels = kernels,
+      kernel_info = kernel_info %>%
+        mutate(weight = weights),
+      ssd = ssd,
+      N0 = N0,
+      years = years,
+      reps = reps
+    ) %>%
+      mutate(
+        climate_variable = climate_var,
+        scenario = scenario_names[i]
+      )
+  })
+  
+  bind_rows(results)
+}
+
+climate_scenarios <- tibble(
+  climate_var = c(
+    "summer.tot.precip",
+    "spring.mean.temp",
+    "prev_spring.mean.temp",
+    "winter.mean.min.temp",
+    "prev_winter.tot.precip"
+  ),
+  extreme = c(
+    "low",   # driest summers
+    "high",  # warmest springs
+    "high",  # warmest previous springs
+    "high",  # warmest winters
+    "high"   # wettest winters
+  )
+)
+
+climate_frequency_results <- purrr::pmap_dfr(
+  climate_scenarios,
+  function(climate_var, extreme) {
+    
+    run_climate_frequency(
+      kernels = kernels_current,
+      kernel_info = kernel_info_current,
+      climate_var = climate_var,
+      extreme = extreme,
+      ssd = ssd,
+      N0 = 1000,
+      years = 100,
+      reps = 10000
+    )
+    
+  }
+)
+
+(freq.year <- climate_frequency_results %>%
+  filter(!(scenario == "normal" & climate_variable != "summer.tot.precip")) %>%
+  mutate(
+    climate_variable = ifelse(
+      scenario == "normal",
+      "base",
+      climate_variable
+    ),
+    scenario = factor(
+      scenario,
+      levels = c("base", "1.5x", "2x", "3x")
+    )
+  ) |> 
+ ggplot(
+       aes(x = climate_variable,
+           y = stochastic_lambda,
+           color = scenario,
+           group = scenario)) +
+  geom_point(size = 3,    position = position_dodge(width = 0.4)) +
+  geom_errorbar(
+    aes(ymin = lower_CI, ymax = upper_CI),
+    width = 0.1, position = position_dodge(width = 0.4)
+  ) +
+    theme_minimal() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(
+    x = "",
+    y = expression(stochastic~lambda),
+    color = "Extreme year frequency"
+  ))
+ggsave(here("Figures", "Dactylis", "STOCH_LAM_YR_FREQ.png"), plot = freq.year, width = 6, height =5)
+
+```
 
