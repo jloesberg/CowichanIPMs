@@ -3,7 +3,7 @@
     "path": "~/GitHub/CowichanIPMs/scripts/lomatium.stochastc.ipm.Rmd",
     "project_path": "scripts/lomatium.stochastc.ipm.Rmd",
     "type": "r_markdown",
-    "hash": "3591685813",
+    "hash": "2308307338",
     "contents": "",
     "dirty": false,
     "created": 1784156202174.0,
@@ -12,15 +12,15 @@
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "740,0",
-        "scrollLine": "720"
+        "cursorPosition": "934,56",
+        "scrollLine": "881"
     },
-    "folds": "906|18|972|0|\n974|18|1011|0|\n",
-    "lastKnownWriteTime": 1784161727,
+    "folds": "969|18|1035|0|\n1037|18|1074|0|\n",
+    "lastKnownWriteTime": 1784224162,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1784161727600,
+    "last_content_update": 1784224162095,
     "read_only": false,
     "read_only_alternatives": []
 }

@@ -1,1 +1,0 @@
-{"frames":[{"func":"split(kernels_current, kernel_info_current$trt)","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error: object 'kernels_current' not found\n"}

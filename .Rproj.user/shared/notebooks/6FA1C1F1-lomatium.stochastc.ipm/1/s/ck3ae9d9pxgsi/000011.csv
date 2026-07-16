@@ -1,7 +1,0 @@
-"0","kernels_current_trt <- split(
-  kernels_current,
-  kernel_info_current$trt
-)
-"
-"2","Error: object 'kernels_current' not found
-"
