@@ -20,38 +20,7 @@ climate <- read.csv(here("clean_data", "CGOP_climatevalues.csv"))
 climate <- climate %>% 
   mutate(year = as.character(year))
 
-#first, figure out what to add to current temps (as a scaled value) to simulation future temperatures
-## in the ipm codes, the future 1 and 2 values will be added to the annual values used in the IPM kernels
-sds <- climate %>%
-  select(ends_with(".temp"), ends_with("tot.precip")) %>%
-  summarise(
-    across(
-      everything(),
-      list(
-        mean = \(x) mean(x, na.rm = TRUE),
-        sd = \(x) sd(x, na.rm = TRUE)
-      )
-    )
-  ) %>%
-  pivot_longer(
-    everything(),
-    names_to = c("variable", ".value"),
-    names_sep = "_"
-  ) %>%
-  mutate(
-    future1 = case_when(
-      grepl("temp", variable) ~ 1 / sd,
-      grepl("summer.tot.precip", variable) ~ (-0.10 * mean) / sd,
-      grepl("spring.tot.precip|winter.tot.precip|fall.tot.precip", variable) ~ (0.10 * mean) / sd
-    ),
-    
-    future2 = case_when(
-      grepl("temp", variable) ~ 2 / sd,
-      grepl("summer.tot.precip", variable) ~ (-0.50 * mean) / sd,
-      grepl("spring.tot.precip|winter.tot.precip|fall.tot.precip", variable) ~ (0.50 * mean) / sd
-    )
-  )
-write.csv(sds, here("clean_data", "CGOP_future_climate_values.csv"), row.names = FALSE)
+
 
 
 # scaling the climate variables
@@ -96,15 +65,15 @@ real <- climate %>%
   select(year, season, measurement, value)%>%
   mutate(season = factor(season,
                          levels = c("spring", "summer", "fall", "winter")))
-normals <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/clean_data/ClimateNA_normals.csv")
+normals <- read.csv(here("clean_data", "ClimateNA_normals.csv"))
 normals <- normals %>%
   dplyr::select(period, Tave_sp, Tmax_sp, Tmin_sp, PPT_sp, Tmax_wt, Tmin_wt, PPT_wt, Tave_wt, Tmax_at, Tmin_at, PPT_at, Tave_at, Tmax_sm, Tmin_sm, PPT_sm, Tave_sm)
 
-future <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/clean_data/ClimateNA_SSPprojections.csv")
+future <- read.csv(here("clean_data", "ClimateNA_SSPprojections.csv"))
 future <- future %>% 
   dplyr::select(period, Tave_sp, Tmax_sp, Tmin_sp, PPT_sp, Tmax_wt, Tmin_wt, PPT_wt, Tave_wt, Tmax_at, Tmin_at, PPT_at, Tave_at, Tmax_sm, Tmin_sm, PPT_sm, Tave_sm)
 
-past <- read.csv("C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/CowichanIPMs/clean_data/ClimateNA_pastdata2000to2024.csv")
+past <- read.csv(here("clean_data", "ClimateNA_pastdata2000to2024.csv"))
 past <- past %>% 
   select(period, PPT_sp, Tmax_sm) %>% 
     mutate(year = str_extract(period, "\\d{4}")) %>%
@@ -260,7 +229,7 @@ ggsave(plot = p_precip, here("Figures","climate","hist.spp.precip.png"), width =
   geom_histogram(binwidth = .5, fill = "white", color = "black") +
     facet_wrap(~full_name, scales = "free", nrow = 4) +
     geom_vline(
-    data = subset(normals_temp, grepl("1971", period)),
+    data = subset(normals_temp, grepl("2020", period)),
     aes(xintercept = normal_value, color = period_label),
     linetype = "dashed", linewidth = 1.2) +
         geom_vline(
@@ -279,7 +248,7 @@ ggsave(plot = p_precip, here("Figures","climate","hist.spp.precip.png"), width =
 (p_precip <- ggplot(real_precip, aes(x = value)) +
   geom_histogram(binwidth = 25, fill = "white", color = "black") +
     geom_vline(
-    data = subset(normals_precip, grepl("1971", period)),
+    data = subset(normals_precip, grepl("2020", period)),
     aes(xintercept = normal_value, color = period_label),
     linetype = "dashed", linewidth = 1.2) +
         geom_vline(
@@ -353,7 +322,7 @@ real_means <- real %>%
 
 (raw.norm.spp.long <- ggplot(real, aes(x = year, y = value)) +
   geom_line(group = 1) +
-  geom_hline(data = subset(normals_long, grepl("1971", period)),
+  geom_hline(data = subset(normals_long, grepl("2020", period)),
              aes(yintercept = normal_value, colour = period), linetype = "dashed", linewidth = 1.2) +
   geom_hline(data = subset(fut_long, grepl("2041", period)),
              aes(yintercept = future_value, colour = period), linetype = "dashed", linewidth = 1.2) +
@@ -373,7 +342,7 @@ ggsave(plot = raw.norm.spp.long, here("Figures","climate", "raw.data.with.normal
 #now shorter term
 (raw.norm.spp.short <- ggplot(real, aes(x = year, y = value)) +
   geom_line(group = 1) +
-  geom_hline(data = subset(normals_long, grepl("1971", period)),
+  geom_hline(data = subset(normals_long, grepl("2020", period)),
              aes(yintercept = normal_value, colour = period), linetype = "dashed", linewidth = 1.2) +
   geom_hline(data = subset(fut_long, grepl("2040", period)),
              aes(yintercept = future_value, colour = period), linetype = "dashed", linewidth = 1.2) +
@@ -391,6 +360,89 @@ ggsave(plot = raw.norm.spp.short, here("Figures","climate", "raw.data.with.norma
 
 
 ```
+
+```{r differences ebtween today adn future}
+# Keep only the future periods you plotted (if desired)
+future_table <- fut_long %>%
+  filter(grepl("370", period)) %>%   # keep only periods containing "370"
+  filter(grepl("2041", period)) %>%   # keep future periods
+  select(season, measurement, period, future_value) %>%
+  left_join(
+    normals_long %>%
+      filter(grepl("2020", period)) %>%
+      select(season, measurement, normal = normal_value),
+    by = c("season", "measurement")
+  ) %>%
+  left_join(
+    real_means %>%
+      select(season, measurement, real_mean = mean_value),
+    by = c("season", "measurement")
+  ) %>%
+mutate(
+  percent_change_from_normal = ((future_value - normal) / normal) * 100,
+    percent_change_from_real_mean = ((future_value - real_mean) / real_mean) * 100,
+    projected_from_real_mean = real_mean * (1 + percent_change_from_normal / 100),
+    difference = projected_from_real_mean - real_mean
+) %>%
+  arrange(season, measurement, period)%>%
+  select(season, measurement, period, difference) %>%
+  mutate(
+    variable = paste(
+      season,
+      case_when(
+        measurement == "max temp" ~ "mean.max.temp",
+        measurement == "mean temp" ~ "mean.temp",
+        measurement == "min temp" ~ "mean.min.temp",
+        measurement == "precip" ~ "tot.precip"
+      ),
+      sep = "."
+    )
+  ) %>%
+  select(variable, difference)
+
+future_table
+#first, figure out what to add to current temps (as a scaled value) to simulation future temperatures
+## in the ipm codes, the future 1 and 2 values will be added to the annual values used in the IPM kernels
+sds <- climate %>%
+  select(ends_with(".temp"), ends_with("tot.precip")) %>%
+  summarise(
+    across(
+      everything(),
+      list(
+        mean = \(x) mean(x, na.rm = TRUE),
+        sd = \(x) sd(x, na.rm = TRUE)
+      )
+    )
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = c("variable", ".value"),
+    names_sep = "_"
+  ) %>%
+  left_join(
+    future_table,
+    by = "variable"
+  ) %>%
+  mutate(
+    future.precip = case_when(
+      grepl("precip", variable) ~ difference / sd,  # apply precip change
+      grepl("temp", variable) ~ 0                    # keep temp unchanged
+    ),
+    
+    future.temp = case_when(
+      grepl("temp", variable) ~ difference / sd,     # apply temp change
+      grepl("precip", variable) ~ 0                  # keep precip unchanged
+    )
+  ) |> 
+  select(variable, future.precip, future.temp)
+write.csv(sds, here("clean_data", "CGOP_future_climate_values.csv"), row.names = FALSE)
+```
+
+```{r}
+
+```
+
+
 
 
 ```{r}

@@ -933,3 +933,9 @@ ggsave(here("Figures", "Dactylis", "STOCH_LAM_YR_FREQ.png"), plot = freq.year, w
 
 ```
 
+Ok the last thing to try before ESA:
+Just perturn temp and precip separately, and what's in line with the climate projections
+```{r}
+
+```
+
