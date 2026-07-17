@@ -1,7 +1,0 @@
-"0","(sm.p <- dac_lambda %>%"
-"0","   filter(scenario == ""current"") |> "
-"0","    ggplot(aes(x = summer.tot.precip, y = lambda, color = factor(Year))) +"
-"0","  geom_point(size = 2) +"
-"0","  labs(x = ""Summer precipitation"","
-"0","    y = expression(lambda),"
-"0","    color = ""Year""))"

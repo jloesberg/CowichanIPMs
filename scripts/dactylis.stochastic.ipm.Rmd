@@ -169,7 +169,7 @@ params=data.frame(
 )
 params <- bind_cols(params, rows)
 
-scenarios <- expand.grid(scenario = c("current", "future1", "future2"))
+scenarios <- expand.grid(scenario = c("current", "future.precip", "future.temp", "future"))
 params <- crossing(params, scenarios)
 
 #add in the future climate variables
@@ -180,13 +180,16 @@ for (v in climate_vars) {
   # Skip variables not present in params
   if (v %in% names(params)) {
 
-    delta1 <- future.climate$future1[future.climate$variable == v]
-    delta2 <- future.climate$future2[future.climate$variable == v]
+    delta.precip <- future.climate$future.precip[future.climate$variable == v]
+    delta.temp <- future.climate$future.temp[future.climate$variable == v]
+    delta <- future.climate$future[future.climate$variable == v]
+
 
     params[[v]] <- case_when(
       params$scenario == "current" ~ params[[v]],
-      params$scenario == "future1" ~ params[[v]] + delta1,
-      params$scenario == "future2" ~ params[[v]] + delta2
+      params$scenario == "future.precip" ~ params[[v]] + delta.precip,
+      params$scenario == "future.temp" ~ params[[v]] + delta.temp,
+      params$scenario == "future" ~ params[[v]] + delta
     )
   }
 
@@ -195,13 +198,15 @@ for (v in climate_vars) {
 
   if (prev_v %in% names(params)) {
 
-    delta1 <- future.climate$future1[future.climate$variable == v]
-    delta2 <- future.climate$future2[future.climate$variable == v]
+    delta.precip <- future.climate$future.precip[future.climate$variable == v]
+    delta.temp <- future.climate$future.temp[future.climate$variable == v]
+    delta <- future.climate$future[future.climate$variable == v]
 
     params[[prev_v]] <- case_when(
       params$scenario == "current" ~ params[[prev_v]],
-      params$scenario == "future1" ~ params[[prev_v]] + delta1,
-      params$scenario == "future2" ~ params[[prev_v]] + delta2
+      params$scenario == "future.precip" ~ params[[prev_v]] + delta.precip,
+      params$scenario == "future.temp" ~ params[[prev_v]] + delta.temp,
+      params$scenario == "future" ~ params[[prev_v]] + delta
     )
   }
 }
@@ -469,6 +474,11 @@ kernel_info <- params %>%
   ggplot(aes(x = Year, y = lambda, group = 1)) +
   geom_line(size = 1.2) +
   geom_point(size = 1.2) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(
     x = "year",
     y = expression(lambda)) )
@@ -478,6 +488,11 @@ kernel_info <- params %>%
    filter(scenario == "current") |> 
     ggplot( aes(x = prev_winter.tot.precip, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(
     x = "Previous winter precipitation",
     y = expression(lambda),
@@ -486,6 +501,11 @@ kernel_info <- params %>%
    filter(scenario == "current") |> 
     ggplot(aes(x = summer.tot.precip, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(x = "Summer precipitation",
     y = expression(lambda),
     color = "Year"))
@@ -494,6 +514,11 @@ kernel_info <- params %>%
    filter(scenario == "current") |> 
     ggplot(aes(x = winter.mean.min.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+    geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(
     x = "Winter min temperature",
     y = expression(lambda),
@@ -502,6 +527,11 @@ kernel_info <- params %>%
    filter(scenario == "current") |> 
     ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+      geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(x = "Previous spring mean temperature",
     y = expression(lambda),
     color = "Year"))
@@ -509,6 +539,11 @@ kernel_info <- params %>%
    filter(scenario == "current") |> 
     ggplot(aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(x = "Spring mean temperature",
     y = expression(lambda),
     color = "Year"))
@@ -532,13 +567,17 @@ kernel_info <- params %>%
   facet_wrap(~scenario)+
   labs(
     x = "year",
-    y = expression(lambda)) )
+    y = expression(lambda)) +
+    theme(
+  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+))
 
 ggsave(here("Figures", "Dactylis", "dac.yearly.pop.growth.png"), plot = yearly, width = 7.5, height =5)
 ggsave(here("Figures", "Dactylis", "yearly.pop.growth.by.climate.png"), plot = together, width = 12, height =8)
 
 ```
 
+Get the SSD to start the stohcastic simulation at:
 ```{r}
 # Base kernel (single kernel)
 base_kernel <- kernels[[which(dac_lambda$scenario == "base")]]
@@ -568,7 +607,7 @@ ssd <- get_ssd(base_kernel, N0 = 1000, years = 100) #this will be used for all o
 ```
 
 
-```{r stochastic ipm where climate is 1-2 deg warmer/precip changes}
+```{r stochastic ipm where climate is the  warmer/precip changes}
 scenario_names <- setdiff(unique(dac_lambda$scenario), "base")
 
 scenario_kernels <- lapply(scenario_names, function(sc) {
@@ -638,6 +677,9 @@ stoch_lambda <- stochastic_ipm(
   years = 100,
   reps = 10000
 )
+
+write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "dactylis.csv"), row.names = FALSE)
+
 ```
 
 
@@ -655,8 +697,9 @@ lam.s <- ggplot(stoch_lambda,
   scale_x_discrete(
     labels = c(
       "current" = "Current",
-      "future1" = "1° warmer",
-      "future2" = "2° warmer"
+      "future.precip" = "Precip change",
+      "future.temp" = "Temp change",
+      "future" = "Future"
     )
   ) +
   labs(
@@ -669,6 +712,9 @@ ggsave(here("Figures", "Dactylis", "STOCH_LAM_SCENARIOS.png"), plot = lam.s, wid
 
 ```
 
+
+
+Not fixing the rest for now...
 ```{r}
 #just make bad years more common - say, 3 years where climate is warmest/driest
 #filter out the current scenarios

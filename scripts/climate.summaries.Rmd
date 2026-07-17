@@ -432,11 +432,17 @@ sds <- climate %>%
     future.temp = case_when(
       grepl("temp", variable) ~ difference / sd,     # apply temp change
       grepl("precip", variable) ~ 0                  # keep precip unchanged
-    )
+    ),
+    future = difference / sd
   ) |> 
-  select(variable, future.precip, future.temp)
+  select(variable, future.precip, future.temp, future)
 write.csv(sds, here("clean_data", "CGOP_future_climate_values.csv"), row.names = FALSE)
 ```
+
+this is equivalent to shifting the mean while keeping sd the same
+this file just has the values to add to the  "scaled" climate values per year
+theyre in the "scaled" units
+
 
 ```{r}
 

@@ -1,7 +1,0 @@
-"0","(sp <- dac_lambda %>%"
-"0","   filter(scenario == ""current"") |> "
-"0","    ggplot(aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +"
-"0","  geom_point(size = 2) +"
-"0","  labs(x = ""Spring mean temperature"","
-"0","    y = expression(lambda),"
-"0","    color = ""Year""))"
