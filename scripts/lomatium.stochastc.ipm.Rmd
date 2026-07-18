@@ -714,7 +714,7 @@ stoch_lambda <- stochastic_ipm(
   years = 100,
   reps = 10000
 )
-write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "lomatium.csv"), row.names = FALSE)
+write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "lomatium.stoch.lambda.csv"), row.names = FALSE)
 
 ```
 

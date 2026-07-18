@@ -678,7 +678,7 @@ stoch_lambda <- stochastic_ipm(
   reps = 10000
 )
 
-write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "dactylis.csv"), row.names = FALSE)
+write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "dactylis.stoch.lambda.csv"), row.names = FALSE)
 
 ```
 
