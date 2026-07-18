@@ -360,6 +360,23 @@ lom_lambda <- do.call(rbind, lamb_lists)
 
 ```
 
+
+```{r}
+(determ <- lom_lambda %>%
+  filter(prev_spring.mean.temp == 0, spring.tot.precip == 0, prev_fall.mean.temp==0, fall.mean.temp ==0) %>% 
+  ggplot(aes(x = trt, y = lambda, color = trt)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  theme(legend.position = "none")+
+  labs(
+    x = "",
+    y = expression(lambda),
+    color = ""
+  ) )
+ggsave(here("Figures", "Lomatium", "lomatium.pop.growth.determ.mean.png"), plot = determ, width = 5, height =5)
+
+```
+
 ```{r}
 ggplot(lom_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)) +
   geom_tile(color = "white") +
@@ -378,7 +395,7 @@ ggplot(dac_lambda, aes(x = summer.mean.max.temp, y = spring.temp, fill = lambda)
 ```{r}
 y_limits <- c(.75, 1.8)
 (summer.temp <- lom_lambda %>%
-  filter(spring.temp == 0, spring.tot.precip == 0) %>% 
+  filter(spring.temp == 0, spring.tot.precip == 0, ) %>% 
   ggplot(aes(x = summer.mean.max.temp, y = lambda, color = trt)) +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
@@ -498,3 +515,123 @@ ggsave(here("Figures", "lomatium", "lomatium.pop.growth.png"), plot = together, 
 
 ```
 
+
+
+Sensitivity:
+```{r}
+params.sens <- params |> 
+  filter(prev_spring.mean.temp ==0,
+    fall.mean.temp ==0,
+    prev_fall.mean.temp ==0,
+    spring.tot.precip==0)
+
+perturb_params <- c(
+'growth.int',
+	'growth.slope',
+	'growth.sd',
+	'surv.int',
+	'surv.slope',
+	'pflow.int',
+	'pflow.slope',
+	"pseeds.int",
+	'pseeds.slope',
+	'no.seeds.int',
+	'no.seeds.slope',
+	'recruit.size.mean',
+	'recruit.size.sd',
+	'pest'
+)
+
+# create one perturbed row per parameter
+params.sens <- bind_rows(
+  params.sens %>% mutate(parameter = "baseline"),
+  lapply(perturb_params, function(p) {
+    x <- params.sens
+    x[[p]] <- x[[p]] * 1.1
+    x$parameter <- p
+    x
+  })
+)
+```
+
+```{r}
+params_list <-  params.sens %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
+
+###
+mat.size = 100 #dimensions of continuous matrix
+bigmatrix <- function(params_list, mat.size){
+
+  n <- mat.size
+  L <- min.size
+  U <- max.size
+
+  # mesh
+  h <- (U - L) / n
+  b <- L + c(0:n) * h
+  y <- 0.5 * (b[1:n] + b[2:(n+1)])
+
+  # Fertility matrix
+  Fmat <- matrix(0, n, n)
+
+  # recruits of size y from parent size x
+  Fmat <- outer(y, y, function(y,x){
+    f.yx(x, params_list) * recruit.size(y, params_list)
+  }) * h
+
+  # Growth/survival
+  Tmat <- t(outer(y, y, P, params = params_list)) * h
+
+  # Full kernel
+  IPMmat <- Fmat + Tmat
+
+  out_matrix <- list(
+    IPMmat = IPMmat,
+    Fmat = Fmat,
+    Tmat = Tmat,
+    meshpts = y)
+
+  out_lamb <- data.frame(
+    lambda = lambda(IPMmat),
+    prev_spring.mean.temp = params_list$prev_spring.mean.temp,
+    winter.mean.min.temp = params_list$winter.mean.min.temp,
+    summer.tot.precip = params_list$summer.tot.precip,
+    spring.mean.temp = params_list$spring.mean.temp,
+    prev_winter.tot.precip= params_list$prev_winter.tot.precip,
+    parameter = params_list$parameter)
+
+  return(out_lamb)
+}
+
+#what I want returned is lambdas
+lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
+
+#great~! now make it a df
+sens_results <- do.call(rbind, lamb_lists)
+
+```
+
+```{r}
+baseline_lambda <- sens_results$lambda[sens_results$parameter == "baseline"]
+
+sens_results <- sens_results %>%
+  mutate(delta_lambda = lambda - baseline_lambda)
+
+(elasticity <- ggplot(sens_results %>% filter(parameter != "baseline"),
+       aes(x = reorder(parameter, delta_lambda),
+           y = delta_lambda)) +
+  geom_col( fill = NA,
+    color = "black",
+    linewidth = 0.8) +
+    geom_hline(yintercept  = 0, color = "black")+
+  labs(
+    x = "",
+    y = expression(Delta*lambda)
+  )+
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )))
+ggsave(here("Figures", "Lomatium", "elasticity_deterministic.png"), plot = elasticity, width = 8, height =6)
+
+```

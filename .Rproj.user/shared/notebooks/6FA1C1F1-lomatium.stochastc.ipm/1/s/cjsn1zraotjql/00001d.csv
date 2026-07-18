@@ -1,4 +1,0 @@
-"0","#parameters for new plants"
-"0","new_sd <- sd(lom.new$size)"
-"0","new_mean <- mean(lom.new$size, na.rm = T)"
-"0","hist(lom.new$size)"

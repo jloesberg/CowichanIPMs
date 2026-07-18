@@ -9,7 +9,5 @@
 "0","# poisson.base.size <- glmer(No.umbels ~ size + (1|Plot) + (1|Year), data = subset(lom, pflower == ""1""), family = ""poisson"")"
 "0",""
 "0","gm.base.trt.int <- lmer(sizeT1 ~ size*trt + (1|Plot) + (1|Year), data = lom, REML = F)"
-"0","fm.base.size <- glmer(pflower ~ size + (1|Plot) + (1|Year), data = lom, family = ""binomial"")"
-"0","sm.spf.int <- glmer(psurvivalT1 ~ size*prev_spring.mean.temp + fall.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = ""binomial"")"
-"0","ps.s.precip <- glmer(pseeds ~ size  + spring.tot.precip + (1|Plot) + (1|Year), data = seeds, family = ""binomial"")"
-"0","poisson.f.trt <- glmer.nb(no.seeds ~ size  + prev_fall.mean.temp + trt + (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0))"
+"2","Error: bad 'data': object 'lom' not found
+"

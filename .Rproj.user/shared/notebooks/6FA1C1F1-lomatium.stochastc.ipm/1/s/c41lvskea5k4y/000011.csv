@@ -1,6 +1,0 @@
-"0","# Base kernel (single kernel)
-base_kernel <- kernels[[which(lom_lambda$scenario == ""base"")]]
-"
-"2","Error in kernels[[which(lom_lambda$scenario == ""base"")]] : 
-  recursive indexing failed at level 2
-"

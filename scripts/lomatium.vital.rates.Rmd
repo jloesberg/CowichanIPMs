@@ -331,7 +331,7 @@ colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "sizeT1"  # Renaming the
   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.15, 0.9),legend.background = element_rect(fill = NA, colour = NA),
     legend.key = element_rect(fill = NA, colour = NA))+
   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21" )) +
   scale_y_continuous(expand = c(0, 0), limits = c(-.25, 6))+
   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 6))+
   #  facet_wrap(~trt)+
@@ -343,8 +343,9 @@ ggsave(here("Figures", "Lomatium", "growth.png"), plot = growth, width = 6, heig
 ```
 
 ```{r pflower prequel}
+table(lom$pflower, lom$Year)
 #base.p1 <- glmer(pflowerT ~ log.no.stems*as.numeric(Year) + (1|Plot) , data = dac, family = "binomial")
-base.p <- glmer(pflower ~ size*Year + (1|Plot) , data = lom, family = "binomial")
+base.p <- glmer(pflower ~ size+Year + (1|Plot) , data = lom, family = "binomial")
 #t <- AIC(base.p, base.p1)
 
 drop1(base.p,test="Chisq") 
@@ -387,6 +388,7 @@ fm.base.size <- glmer(pflower ~ size + (1|Plot) + (1|Year), data = lom, family =
 fm.base.trt <- glmer(pflower ~ size+ trt + (1|Plot) + (1|Year), data = lom, family = "binomial")
 fm.base.trt.int <- glmer(pflower ~ size*trt + (1|Plot) + (1|Year), data = lom, family = "binomial")
 
+ drop1(fm.base.trt.int,test="Chisq") 
 ##grow season total precip
 # fm.gs.precip <- glmer(pflowerT1 ~ size  + spring.tot.precip + (1|Plot) + (1|Year), data = lom, family = "binomial")
 # fm.gs.precip.int <- glmer(pflowerT1 ~ size *spring.tot.precip + (1|Plot) + (1|Year), data = lom, family = "binomial")
@@ -658,6 +660,8 @@ summary(sm.spf.int2)
 ```
 
 ```{r survival figure}
+sm.spf.int2 <- glmer(psurvivalT1 ~ size*fall.mean.temp + prev_spring.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
+
 pred.dat.s <- expand.grid(size = seq(min(lom$size, na.rm = TRUE), max(lom$size, na.rm = TRUE), by = .1), fall.mean.temp = c(-1, 0, 1), prev_spring.mean.temp = c(-1, 0, 1))
 pred.dat.output.s <- cbind(pred.dat.s, as.data.frame(predict(sm.spf.int2, newdata = pred.dat.s, type="response", re.form=~0, pred.var=TRUE)))
 colnames(pred.dat.output.s)[ncol(pred.dat.output.s)] <- "psurvivalT1"  # Renaming the last column

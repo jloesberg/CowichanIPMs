@@ -21,6 +21,8 @@ theme_set(theme_classic()) #for ggplot
 ```{r}
 primula <- read.csv(here("clean_data", "Primula_Demography_Data_CLEANED_2016thru2026.csv"))
 climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
+future.climate <- read.csv(here("clean_data", "CGOP_future_climate_values.csv"))
+
 climate<- climate %>%
   arrange(year) %>%
   mutate(across(-year, ~lag(.x), .names = "prev_{.col}")) %>% 
@@ -68,7 +70,7 @@ climate <- climate %>%
 
 ```{r best fit vital rate models}
 gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
-ranef(gm.st.i)
+#ranef(gm.st.i)
 pmflow.ti <-  glmer(pflower ~ log.ros.area.prev*trt + (1|plot) + (1|year), data = subset(primula, year != "2017"), family = "binomial")
 nf.wt <-  glmer(flow.sum ~ log.ros.area.prev + prev_winter.mean.min.temp	+(1|plot) + (1|year), data= subset(primula, flow.sum>0), family = "poisson")
 sm <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
@@ -127,9 +129,53 @@ params=data.frame(
 	no.clone.slope = NA,
 	recruit.size.mean=NA,
 	recruit.size.sd=NA,
-	prob.seed.germ = NA
+	prob.seed.germ = NA,
+	seeds = NA
 )
 params <- bind_cols(params, rows)
+
+scenarios <- expand.grid(scenario = c("current", "future.precip", "future.temp", "future"))
+params <- crossing(params, scenarios)
+
+#add in the future climate variables
+climate_vars <- future.climate$variable
+
+for (v in climate_vars) {
+
+  # Skip variables not present in params
+  if (v %in% names(params)) {
+
+    delta.precip <- future.climate$future.precip[future.climate$variable == v]
+    delta.temp <- future.climate$future.temp[future.climate$variable == v]
+    delta <- future.climate$future[future.climate$variable == v]
+
+
+    params[[v]] <- case_when(
+      params$scenario == "current" ~ params[[v]],
+      params$scenario == "future.precip" ~ params[[v]] + delta.precip,
+      params$scenario == "future.temp" ~ params[[v]] + delta.temp,
+      params$scenario == "future" ~ params[[v]] + delta
+    )
+  }
+
+  # Update corresponding prev_ variable if it exists
+  prev_v <- paste0("prev_", v)
+
+  if (prev_v %in% names(params)) {
+
+    delta.precip <- future.climate$future.precip[future.climate$variable == v]
+    delta.temp <- future.climate$future.temp[future.climate$variable == v]
+    delta <- future.climate$future[future.climate$variable == v]
+
+    params[[prev_v]] <- case_when(
+      params$scenario == "current" ~ params[[prev_v]],
+      params$scenario == "future.precip" ~ params[[prev_v]] + delta.precip,
+      params$scenario == "future.temp" ~ params[[prev_v]] + delta.temp,
+      params$scenario == "future" ~ params[[prev_v]] + delta
+    )
+  }
+}
+
 
 #adding in random effects
 #growth
@@ -181,6 +227,19 @@ re_year_noclones <- ranef(no_clones2)$year %>%
 params <- params %>%
   left_join(re_year_noclones, by = "year") 
 
+ ### add in a average year for the SSD for the projections
+climate_cols <- c("prev_winter.mean.min.temp", "spring.mean.temp"
+)
+
+base_row <- params[1:3, ]
+
+base_row[] <- NA
+base_row$trt <- c("irrigated", "control", "drought")
+base_row$year <- "base"
+base_row$scenario <- "base"
+base_row[climate_cols] <- 0
+
+params <- bind_rows(base_row, params)
 #for any years without data, make 0 (average RE)
 params <- params %>%
   mutate(across(
@@ -334,8 +393,12 @@ recruit.size<-function(y,params){
 ```{r ipm}
 #to add in pest for params (uncheck when making that figure)
 #make parameters for control and non reproductive plants under mean temperatures (more simple)
-params_list <-  filter(params) %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
+#params_list <-  filter(params) %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
+params <- params %>%
+  mutate(kernel_id = row_number())
 
+params_list <- params %>%
+  split(.$kernel_id)
 #if a one leaf survives it will either stay as a one leaf or go to adult. BUT they can die. So. One leafs can either die, stay the same, or grow
 prob.1leaf.to.1leaf <- .41*.42 # p that it survives and probability it doesn't become a 2 leaf
 prob.1leaf.to.2leaf <- .41*.58 #p that it survives and probability that it becomes an adult
@@ -379,29 +442,297 @@ bigmatrix<-function(params_list, mat.size)
   
   # Put it all together
   IPMmat<-Fmat+Tmat     #Full Kernel is simply a summation of fertility and transition matrix
-  out_matrix <- list(IPMmat=IPMmat,Fmat=Fmat,Tmat=Tmat,meshpts=y)
   
-  out_lamb <- data.frame(lambda = lambda(IPMmat), spring.mean.temp = params_list$spring.mean.temp, trt = params_list$trt, prev_winter.mean.min.temp = params_list$prev_winter.mean.min.temp, year = params_list$year)
-   # return(out_matrix) #can check this to have a list of all of the matrices listed above
- return(out_lamb) #for now, I just want lambdas
-   return(IPMmat)
- # return(list(out_matrix = out_matrix, out_lamb = out_lamb))
 
+  out_matrix <- list(
+    IPMmat = IPMmat,
+    Fmat = Fmat,
+    Tmat = Tmat,
+    meshpts = y)
+
+  out_lamb <- data.frame(
+    Year = params_list$year,
+    lambda = lambda(IPMmat),
+    scenario = params_list$scenario,
+    prev_winter.mean.min.temp = params_list$prev_winter.mean.min.temp,
+    spring.mean.temp = params_list$spring.mean.temp,
+    trt = params_list$trt,
+    kernel_id = params_list$kernel_id)
+
+return(list(
+  IPMmat = IPMmat,
+  Fmat = Fmat,
+  Tmat = Tmat,
+  meshpts = y,
+  lambda = out_lamb))
 }
 
 #what I want returned is lambdas
-lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
+# lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
+# 
+# #great~! now make it a df
+# primula_lambda <- do.call(rbind, lamb_lists)
+results <- lapply(params_list, bigmatrix, mat.size = mat.size)
 
-#great~! now make it a df
-primula_lambda <- do.call(rbind, lamb_lists)
+prim_lambda <- do.call(rbind, lapply(results, function(x) x$lambda)) #run this one to get df of lambdas
 
-##for stochastic:
-kernels <- lapply(params_list, bigmatrix, mat.size = mat.size)
-
+kernels <- lapply(results, function(x) x$IPMmat)
 kernel_info <- params %>%
-  select(year, trt)
+  select(year)
+##for stochastic:
+# kernels <- lapply(params_list, bigmatrix, mat.size = mat.size)
+# 
+# kernel_info <- params %>%
+#   select(year, trt)
 
 ```
+
+
+```{r yearly lambda figure}
+
+# (yearly <- prim_lambda %>%
+#    filter(scenario == "current") |> 
+#   ggplot(aes(x = Year, y = lambda, group = trt, color = trt)) +
+#   geom_line(size = 1.2) +
+#   geom_point(size = 1.2) +
+#   labs(
+#     x = "year",
+#     y = expression(lambda)) )
+
+(sp <- prim_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot(aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+   geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
+        facet_wrap(~trt)+
+  labs(x = " Spring mean temperature",
+    y = expression(lambda),
+    color = "Year"))
+(wt.p <- prim_lambda %>%
+   filter(scenario == "current") |> 
+    ggplot( aes(x = prev_winter.mean.min.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+    facet_wrap(~trt)+
+    geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
+  labs(
+    x = "Previous winter temp",
+    y = expression(lambda),
+    color = "Year" ))
+
+
+ (together <- (wt.p + sp)+  plot_layout(guides = "collect"))
+
+(yearly <- prim_lambda %>%
+  ggplot(aes(x = Year, y = lambda, color = trt, group = trt)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 1.2) +
+  facet_wrap(~scenario)+
+  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
+     theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1))+
+  labs(
+    x = "year",
+    y = expression(lambda)) )
+
+ggsave(here("Figures", "Primula", "p.yearly.pop.growth.png"), plot = yearly, width =10, height =5)
+ggsave(here("Figures", "Primula", "yearly.pop.growth.by.climate.png"), plot = together, width = 8, height =8)
+
+```
+
+get SSD for stochastic simulations
+```{r}
+# Base kernel (single kernel)
+base_kernels <- kernels[which(prim_lambda$scenario == "base")]
+
+names(base_kernels) <- prim_lambda$trt[prim_lambda$scenario == "base"]#
+get_ssd <- function(kernel, N0, years) {
+  
+  # initial population distribution
+  n <- rep(N0 / nrow(kernel), nrow(kernel))
+  
+  # project population
+  for(i in 1:years) {
+    
+    n <- kernel %*% n
+    
+    # keep abundance constant, retain size distribution
+    n <- n / sum(n) * N0
+  }
+  
+  # stable size distribution
+  ssd <- n / sum(n)
+  
+  return(ssd)
+}
+
+
+# calculate SSD for each treatment
+ssd_list <- lapply(base_kernels, get_ssd, N0 = 1000, years = 100)
+```
+
+
+```{r stochastic ipm where climate is 1-2 deg warmer/precip changes}
+scenario_idx <- prim_lambda$scenario != "base"
+
+scenario_kernels <- lapply(split(seq_along(kernels)[scenario_idx], 
+                                 prim_lambda$trt[scenario_idx]), function(idx) {
+  split(kernels[idx], prim_lambda$scenario[idx])
+})
+names(scenario_kernels)
+names(scenario_kernels$irrigated)
+
+
+stochastic_ipm <- function(scenario_kernels, ssd_list, N0, years, reps) {
+  
+  lambda_summary <- list()
+  
+  counter <- 1
+  
+  for(trt in names(scenario_kernels)) {
+    
+    trt_kernels <- scenario_kernels[[trt]]
+    ssd <- ssd_list[[trt]]
+    
+    for(sc in names(trt_kernels)) {
+      
+      kernel_list <- trt_kernels[[sc]]
+      
+      rep_lambda <- numeric(reps)
+      
+      for(r in 1:reps) {
+        
+        # start from treatment-specific SSD
+        n <- ssd * N0
+        
+        annual_lambda <- numeric(years)
+        
+        for(t in 1:years) {
+          
+          N_before <- sum(n)
+          
+          # sample yearly climate kernel
+          K <- kernel_list[[sample(seq_along(kernel_list), 1)]]
+          
+          # project population
+          n <- K %*% n
+          
+          N_after <- sum(n)
+          
+          annual_lambda[t] <- N_after / N_before
+        }
+        
+        rep_lambda[r] <- exp(mean(log(annual_lambda)))
+      }
+      
+      lambda_s <- exp(mean(log(rep_lambda)))
+      
+      lambda_CI <- quantile(rep_lambda, c(0.025, 0.975))
+      
+      lambda_summary[[counter]] <- data.frame(
+        trt = trt,
+        scenario = sc,
+        stochastic_lambda = lambda_s,
+        lower_CI = lambda_CI[1],
+        upper_CI = lambda_CI[2]
+      )
+      
+      counter <- counter + 1
+    }
+  }
+  
+  return(do.call(rbind, lambda_summary))
+}
+
+stoch_lambda <- stochastic_ipm(
+  scenario_kernels = scenario_kernels,
+  ssd_list = ssd_list,
+  N0 = 1000,
+  years = 100,
+  reps = 10000
+)
+write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "primula.stoch.lambda.csv"), row.names = FALSE)
+
+```
+
+```{r}
+(
+p.s <- ggplot(stoch_lambda, 
+       aes(x = scenario, y = stochastic_lambda, color = trt)) +
+  geom_point(size = 4,
+             position = position_dodge(width = 0.4)) +
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI),
+                width = 0.15,
+                linewidth = 1,
+                position = position_dodge(width = 0.4)) +
+  geom_hline(yintercept = 1, 
+             linetype = "dashed", 
+             color = "grey") +
+  scale_x_discrete(
+    labels = c(
+      "current" = "Current",
+      "future.precip" = "Precip change",
+      "future.temp" = "Temp change",
+      "future" = "Future"
+    )
+  ) +
+    scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
+  labs(
+    x = "", color = "",
+    y = "Stochastic lambda (λs)",
+    title = "Lomatium"
+  ))
+
+ggsave(here("Figures", "Primula", "STOCH_LAM_SCENARIOS.png"), plot = p.s, width = 8, height =6)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r drought sim}
 drought_idx <- which(kernel_info$trt == "drought")

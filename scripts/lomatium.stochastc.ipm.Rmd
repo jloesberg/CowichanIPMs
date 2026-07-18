@@ -158,7 +158,7 @@ params=data.frame(
 )
 params <- bind_cols(params, rows)
 
-scenarios <- expand.grid(scenario = c("current", "future1", "future2"))
+scenarios <- expand.grid(scenario = c("current", "future.precip", "future.temp", "future"))
 params <- crossing(params, scenarios)
 
 #add in the future climate variables
@@ -169,13 +169,16 @@ for (v in climate_vars) {
   # Skip variables not present in params
   if (v %in% names(params)) {
 
-    delta1 <- future.climate$future1[future.climate$variable == v]
-    delta2 <- future.climate$future2[future.climate$variable == v]
+    delta.precip <- future.climate$future.precip[future.climate$variable == v]
+    delta.temp <- future.climate$future.temp[future.climate$variable == v]
+    delta <- future.climate$future[future.climate$variable == v]
+
 
     params[[v]] <- case_when(
       params$scenario == "current" ~ params[[v]],
-      params$scenario == "future1" ~ params[[v]] + delta1,
-      params$scenario == "future2" ~ params[[v]] + delta2
+      params$scenario == "future.precip" ~ params[[v]] + delta.precip,
+      params$scenario == "future.temp" ~ params[[v]] + delta.temp,
+      params$scenario == "future" ~ params[[v]] + delta
     )
   }
 
@@ -184,16 +187,21 @@ for (v in climate_vars) {
 
   if (prev_v %in% names(params)) {
 
-    delta1 <- future.climate$future1[future.climate$variable == v]
-    delta2 <- future.climate$future2[future.climate$variable == v]
+    delta.precip <- future.climate$future.precip[future.climate$variable == v]
+    delta.temp <- future.climate$future.temp[future.climate$variable == v]
+    delta <- future.climate$future[future.climate$variable == v]
 
     params[[prev_v]] <- case_when(
       params$scenario == "current" ~ params[[prev_v]],
-      params$scenario == "future1" ~ params[[prev_v]] + delta1,
-      params$scenario == "future2" ~ params[[prev_v]] + delta2
+      params$scenario == "future.precip" ~ params[[prev_v]] + delta.precip,
+      params$scenario == "future.temp" ~ params[[prev_v]] + delta.temp,
+      params$scenario == "future" ~ params[[prev_v]] + delta
     )
   }
 }
+
+
+
 
 #adding in random effects
 #growth
@@ -498,19 +506,24 @@ kernel_info <- params %>%
 
 ```{r yearly lambda figure}
 
-(yearly <- lom_lambda %>%
-   filter(scenario == "current") |> 
-  ggplot(aes(x = Year, y = lambda, group = trt, color = trt)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 1.2) +
-  labs(
-    x = "year",
-    y = expression(lambda)) )
+# (yearly <- lom_lambda %>%
+#    filter(scenario == "current") |> 
+#   ggplot(aes(x = Year, y = lambda, group = trt, color = trt)) +
+#   geom_line(size = 1.2) +
+#   geom_point(size = 1.2) +
+#   labs(
+#     x = "year",
+#     y = expression(lambda)) )
 
 (prev.sp <- lom_lambda %>%
    filter(scenario == "current") |> 
     ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+   geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
         facet_wrap(~trt)+
   labs(x = "Previous spring mean temperature",
     y = expression(lambda),
@@ -520,6 +533,11 @@ kernel_info <- params %>%
     ggplot( aes(x = fall.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
     facet_wrap(~trt)+
+    geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(
     x = "Fall mean temp",
     y = expression(lambda),
@@ -528,6 +546,11 @@ kernel_info <- params %>%
    filter(scenario == "current") |> 
     ggplot(aes(x = prev_fall.mean.temp, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
+    geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
         facet_wrap(~trt)+
   labs(x = "Previous fall mean temp",
     y = expression(lambda),
@@ -538,6 +561,11 @@ kernel_info <- params %>%
     ggplot(aes(x = spring.tot.precip, y = lambda, color = factor(Year))) +
   geom_point(size = 2) +
     facet_wrap(~trt)+
+    geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = F,
+    color = "black")+
   labs(
     x = "Spring total precip",
     y = expression(lambda),
@@ -686,6 +714,8 @@ stoch_lambda <- stochastic_ipm(
   years = 100,
   reps = 10000
 )
+write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "lomatium.csv"), row.names = FALSE)
+
 ```
 
 ```{r}
@@ -704,8 +734,9 @@ lam.s <- ggplot(stoch_lambda,
   scale_x_discrete(
     labels = c(
       "current" = "Current",
-      "future1" = "1° warmer",
-      "future2" = "2° warmer"
+      "future.precip" = "Precip change",
+      "future.temp" = "Temp change",
+      "future" = "Future"
     )
   ) +
     scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
@@ -715,7 +746,7 @@ lam.s <- ggplot(stoch_lambda,
     title = "Lomatium"
   ))
 
-ggsave(here("Figures", "Lomatium", "STOCH_LAM_SCENARIOS.png"), plot = lam.s, width = 6, height =5)
+ggsave(here("Figures", "Lomatium", "STOCH_LAM_SCENARIOS.png"), plot = lam.s, width = 8, height =6)
 
 ```
 
