@@ -1,0 +1,815 @@
+---
+title: "popgrowth"
+author: ""
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(patchwork) #adding ggplot figs together
+library(lme4) #models
+theme_set(theme_bw(base_size = 15))
+library(AICcmodavg) #for AIC model selection
+library(gt) #for saving tables in a word doc
+library(here) #for reading/saving files in a directory
+```
+
+```{r}
+climate <- read.csv(file = here("cleaned_data", "CGOP_climatevalues_scaled.csv"), header = T)
+climate <- climate %>% 
+    mutate(year = as.character(year)) %>% 
+  drop_na() %>% 
+  filter(year>2015)
+```
+
+
+```{r read in data}
+plec <- read.csv(file = here("cleaned_data", "Plectritis.density_scaled.csv"), header = T)
+plec <- plec %>% 
+  mutate(year = as.character(year),
+         plot = as.factor(plot)) %>% 
+  filter(plot!="12", 
+         !(density == 0 & densityT1 == 0)) %>% 
+  group_by(plot) %>% 
+  arrange(plot,year) %>%
+  mutate(trt = factor(trt, levels = c("irrigated", "control", "drought")),
+         log.lambda = log(lambda1),
+         log.total1 = log(total1)) 
+
+bromus <- read.csv(file = here("cleaned_data", "Bromus.density_scaled.csv"), header = T)
+bromus <- bromus %>% 
+  mutate(year = as.character(year),
+         plot = as.factor(plot)) %>% 
+  mutate(trt = fct_relevel(trt, "irrigated", "control", "drought"))
+
+plec <- left_join(plec, climate)
+bromus <- left_join(bromus, climate)
+```
+
+```{r appendix Figure S3  plots}
+(f1 <- plec %>% 
+  ggplot(aes(x = year, y = log(total1), color = trt))+
+  geom_line(aes(group = plot))+
+  geom_point(aes(group = plot))+
+  facet_wrap(~trt, ncol = 1)+
+  scale_color_manual(values = c("#00b995","#f7ba00", "#f74215"))+
+  labs(y = bquote("log("~italic(Plectritis)*" per "~m^2*" + 1)"), x = "", color = "")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5),
+        legend.position="none", 
+        strip.background = element_rect(color = NA, fill = NA, linewidth = 0.75, linetype = "solid"),
+        strip.text = element_blank(), 
+        panel.grid = element_blank(),
+        axis.line=element_line()))
+(f2 <- plec %>% 
+  ggplot(aes(x = year, y = log.lambda, color = trt))+  
+  geom_hline(yintercept=0, alpha = 0.25)+
+  geom_line(aes(group = plot))+
+  geom_point(aes(group = plot))+
+  facet_wrap(~trt, ncol = 1)+
+  scale_color_manual(values = c("#00b995","#f7ba00", "#f74215"))+
+  labs(y = expression(italic("Plectritis")~log(n[t+1] / n[t])), color = "",x = "")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5),
+        legend.position="none", 
+        strip.background = element_rect(color = NA, fill = NA, linewidth = 0.75, linetype = "solid"),
+        strip.text = element_blank(), 
+        panel.grid = element_blank(),
+        axis.line=element_line()))
+
+###
+(b1 <- bromus %>% 
+  ggplot(aes(x = year, y = log(total1), color = trt))+
+  geom_line(aes(group = plot))+
+  geom_point(aes(group = plot))+
+  facet_wrap(~trt, ncol = 1)+
+  scale_color_manual(values = c("#00b995","#f7ba00", "#f74215"))+
+  labs(y = bquote("log("~italic(Bromus)*" per "~m^2*" + 1)"), color = "", x = "")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5),
+        legend.position="none", 
+        strip.background = element_rect(color = NA, fill = NA, linewidth = 0.75, linetype = "solid"),
+        strip.text = element_blank(), 
+        panel.grid = element_blank(),
+        axis.line=element_line()))
+(b2 <- bromus %>% 
+  ggplot(aes(x = year, y = log(lambda1), color = trt))+  
+  geom_hline(yintercept=0, alpha = 0.25)+
+  geom_line(aes(group = plot))+
+  geom_point(aes(group = plot))+
+  facet_wrap(~trt, ncol = 1)+
+  scale_color_manual(values = c("#00b995","#f7ba00", "#f74215"))+
+  labs(y = expression(italic("Bromus")~log(n[t+1] / n[t])), color = "",x = "",)+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5),
+        legend.position="none", 
+        strip.background = element_rect(color = NA, fill = NA, linewidth = 0.75, linetype = "solid"),
+        strip.text = element_blank(), 
+        panel.grid = element_blank(),
+        axis.line=element_line()))
+
+(figs3 <- (f1+b1 +f2+ b2) + plot_annotation(tag_levels = 'A')+ plot_layout(widths = c(3.5, 1.75), guides = 'collect') & theme(legend.position = 'bottom'))
+
+
+ggsave(plot = figs3, file = here("figures", "FigureS3.png"), width = 8, height = 9, dpi = 300)
+
+```
+
+
+
+
+
+```{r plec model selection}
+seablush_base <- lmer(log.lambda ~ 1+(1|year)+ (1|plot), data = plec, REML = F)
+seablush_density <- lmer(log.lambda ~ log.total1 + (1|year) + (1|plot), data = plec, REML = FALSE)
+seablush_density.q <- lmer(log.lambda ~ I(log.total1^2) + log.total1 + (1|year) + (1|plot), data = plec, REML = FALSE)
+seablush_trt <- lmer(log.lambda ~ log.total1+trt + (1|year)+ (1|plot), data = plec, REML = F)
+seablush_trt.int <- lmer(log.lambda ~ log.total1*trt + (1|year)+ (1|plot), data = plec, REML = F)
+seablush_trt.alone<- lmer(log.lambda ~ trt + (1|year)+ (1|plot), data = plec, REML = F)
+
+seablush1 <- lmer(log.lambda ~ log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush1.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush1.1 <- lmer(log.lambda ~ log.total1+spring.tot.precip + trt+ (1|year)+ (1|plot), data = plec, REML = F)
+seablush1.2 <- lmer(log.lambda ~ log.total1+spring.tot.precip *trt +(1|year)+ (1|plot), data = plec, REML = F)
+seablush1.3<- lmer(log.lambda ~ log.total1*spring.tot.precip +trt + (1|year)+(1|plot), data = plec, REML = F)
+seablush1.4 <- lmer(log.lambda ~ log.total1*spring.tot.precip +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush1.5 <- lmer(log.lambda ~ spring.tot.precip +(1|year)+ (1|plot), data = plec, REML = F)
+
+seablush2 <- lmer(log.lambda ~ log.total1+summer.mean.max.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush2.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+summer.mean.max.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush2.1 <- lmer(log.lambda ~ log.total1+summer.mean.max.temp + trt+ (1|year)+ (1|plot), data = plec, REML = F)
+seablush2.2 <- lmer(log.lambda ~ log.total1+summer.mean.max.temp *trt +(1|year)+ (1|plot), data = plec, REML = F)
+seablush2.3<- lmer(log.lambda ~ log.total1*summer.mean.max.temp +trt + (1|year)+(1|plot), data = plec, REML = F)
+seablush2.4 <- lmer(log.lambda ~ log.total1*summer.mean.max.temp + (1|year)+ (1|plot), data = plec, REML = F)
+seablush2.5 <- lmer(log.lambda ~ summer.mean.max.temp +(1|year)+ (1|plot), data = plec, REML = F)
+
+seablush3 <- lmer(log.lambda ~ log.total1+summer.tot.precip +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush3.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+summer.tot.precip +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush3.1 <- lmer(log.lambda ~ log.total1+summer.tot.precip + trt+ (1|year)+ (1|plot), data = plec, REML = F)
+seablush3.2 <- lmer(log.lambda ~ log.total1+summer.tot.precip *trt +(1|year)+ (1|plot), data = plec, REML = F)
+seablush3.3<- lmer(log.lambda ~ log.total1*summer.tot.precip +trt  + (1|year)+ (1|plot), data = plec, REML = F)
+seablush3.4 <- lmer(log.lambda ~ log.total1*summer.tot.precip +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush3.5 <- lmer(log.lambda ~ summer.tot.precip +(1|year)+ (1|plot), data = plec, REML = F)
+
+seablush4 <- lmer(log.lambda ~ log.total1+spring.mean.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush4.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+spring.mean.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush4.1 <- lmer(log.lambda ~ log.total1+spring.mean.temp + trt+ (1|year)+ (1|plot), data = plec, REML = F)
+seablush4.2 <- lmer(log.lambda ~ log.total1+spring.mean.temp *trt +(1|year)+ (1|plot), data = plec, REML = F)
+seablush4.3<- lmer(log.lambda ~ log.total1*spring.mean.temp +trt + (1|year)+(1|plot), data = plec, REML = F)
+seablush4.4 <- lmer(log.lambda ~ log.total1*spring.mean.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush4.5 <- lmer(log.lambda ~ spring.mean.temp +(1|year)+ (1|plot), data = plec, REML = F)
+
+seablush5 <- lmer(log.lambda ~ log.total1+fall.mean.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush5.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+fall.mean.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush5.1 <- lmer(log.lambda ~ log.total1+fall.mean.temp + trt+ (1|year)+ (1|plot), data = plec, REML = F)
+seablush5.2 <- lmer(log.lambda ~ log.total1+fall.mean.temp *trt +(1|year)+ (1|plot), data = plec, REML = F)
+seablush5.3<- lmer(log.lambda ~ log.total1*fall.mean.temp +trt + (1|year)+(1|plot), data = plec, REML = F)
+seablush5.4 <- lmer(log.lambda ~ log.total1*fall.mean.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush5.5 <- lmer(log.lambda ~ fall.mean.temp +(1|year)+ (1|plot), data = plec, REML = F)
+
+seablush6 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush6.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush6.1 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp + trt+ (1|year)+ (1|plot), data = plec, REML = F)
+seablush6.2 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+ (1|plot), data = plec, REML = F)
+seablush6.3<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = plec, REML = F)
+seablush6.4 <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = plec, REML = F)
+seablush6.5 <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = plec, REML = F)
+
+models.plec <- mget(ls(pattern = "^seablush"))
+plec_AICc<-aictab(cand.set = models.plec,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+summary(seablush2.4)
+summary(seablush3.4)
+
+```
+
+```{r}
+summary(seablush2.4)
+fixef(seablush2.4)
+coefs <- summary(seablush2.4)$coefficients
+
+plec_best <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"])
+write.csv(plec_best, here("tables", "plectritis_best_fit_coeff.csv"), row.names = F)
+```
+
+
+```{r}
+plec_AICc2 <- plec_AICc%>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+
+plec_AICc2$Modnames <- gsub("seablush_base", "1", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush_density.q", "N² + N", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush_density", "N", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush_trt.alone", "trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush_trt.int", "N × trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush_trt", "N + trt", plec_AICc2$Modnames)
+
+plec_AICc2$Modnames <- gsub("seablush1.1", "N + SpP + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush1.2", "N + SpP × trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush1.3", "N × SpP + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush1.4", "N × SpP", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush1.5", "SpP", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush1.q", "N² + N + SpP", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush1", "N + SpP", plec_AICc2$Modnames)
+
+plec_AICc2$Modnames <- gsub("seablush2.1", "N + SuT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush2.2", "N + SuT x trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush2.3", "N × SuT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush2.4", "N × SuT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush2.5", "SuT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush2.q", "N² + N + SuT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush2", "N + SuT", plec_AICc2$Modnames)
+
+plec_AICc2$Modnames <- gsub("seablush3.1", "N + SuP + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush3.2", "N + SuP x trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush3.3", "N x SuP + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush3.4", "N x SuP", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush3.5", "SuP", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush3.q", "N² + N + SuP", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush3", "N + SuP", plec_AICc2$Modnames)
+
+plec_AICc2$Modnames <- gsub("seablush4.1", "N + SpT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush4.2", "N + SpT x trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush4.3", "N x SuP + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush4.4", "N x SuT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush4.5", "SuT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush4.q", "N² + N + SuT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush4", "N + SuT", plec_AICc2$Modnames)
+
+plec_AICc2$Modnames <- gsub("seablush5.1", "N + FT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush5.2", "N + FT × trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush5.3", "N × FT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush5.4", "N × FT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush5.5", "FT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush5.q", "N² + N + FT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush5", "N + FT", plec_AICc2$Modnames)
+
+plec_AICc2$Modnames <- gsub("seablush6.1", "N + WT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush6.2", "N + WT × trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush6.3", "N × WT + trt", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush6.4", "N × WT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush6.5", "WT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush6.q", "N² + N + WT", plec_AICc2$Modnames)
+plec_AICc2$Modnames <- gsub("seablush6", "N + WT", plec_AICc2$Modnames)
+
+pop.model <- plec_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+    #mutate_at(3:8, round, 3) %>% 
+    select(c(1:4, 6))%>%
+    mutate(species = "Plectritis",
+           Rank = 1:n()) %>% 
+  relocate(species, .before =1) %>% 
+  filter(Rank %in% c(1:10, 43)) #also show the intercept only model
+
+pop.model %>% gt() %>% gtsave(here("tables", "POPDYN.plec.docx"))
+```
+
+
+
+
+```{r plec figure}
+#bootstrapping:
+# set number of bootstrap samples:
+boot = 1000
+set.seed(12345)
+
+###
+#summary(seablush2)
+#parametric bootstrap
+#make matrix of random draws
+plec_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(seablush2.4), Sigma=vcov(seablush2.4)))
+colnames(plec_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.st <- expand.grid(log.total1.samp = seq(0, 7, by = .5), summer.mean.max.temp.samp = c(min(plec$summer.mean.max.temp, na.rm = T), max(plec$summer.mean.max.temp, na.rm = T)))
+pred.dat.st$Seq <- 1:nrow(pred.dat.st)
+
+booted.p <- cross_join(pred.dat.st, plec_samp) %>% 
+  rename(interact = 7) %>% 
+  mutate(log.lambda = Intercept + summer.mean.max.temp.samp*summer.mean.max.temp+log.total1.samp*log.total1 + interact*log.total1.samp*summer.mean.max.temp.samp) %>% 
+  group_by(Seq, summer.mean.max.temp.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         summer.mean.max.temp = summer.mean.max.temp.samp)
+
+(summer <- plec %>% 
+  ggplot(aes(x = log.total1, y = log.lambda))+
+  geom_hline(yintercept=0, alpha = 0.25, linetype = "dashed")+
+  geom_point(alpha= 0.6, shape = 1, aes(size = summer.mean.max.temp))+
+  scale_size_continuous(range = c(2, 4)) +  # Adjust the size range as needed
+  scale_color_manual(values=c( "lightskyblue", "indianred1"))+
+  geom_line(data = booted.p, aes(x = log.total1, y = log.lambda, color = as.character(summer.mean.max.temp)), linewidth = 1.3)+
+  geom_ribbon(data = booted.p, aes(ymin = lower, ymax = upper, fill = as.character(summer.mean.max.temp)), linewidth = .75, alpha = 0.2)+
+  scale_fill_manual(values = c("lightskyblue", "indianred1"), guide = "none")+
+  labs(x = bquote(""~italic(Plectritis)*" per "~m^2*" + 1"), y = expression(italic("Plectritis")~log(N[t+1] / N[t])), color = "Summer Temp")+
+  guides(size = "none")+
+  scale_y_continuous(limits = c(-2.5, 3.3), breaks = seq(-2, 3, by = 1))+ 
+  scale_x_continuous(breaks = log(c(1, 5, 25,  100, 400, 1000)),  # Log-transformed ticks
+  labels = c(1, 5, 25, 100, 400, 1000) )+
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
+
+ggsave(plot = summer, file = here("figures", "plec.summer.temp.png"), width = 6, height = 4, dpi = 300)
+
+###
+#also plotting the other best supported model
+plec_samp =as.data.frame( MASS::mvrnorm(n=boot, mu=fixef(seablush3.4), Sigma=vcov(seablush3.4)))
+colnames(plec_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.p <- expand.grid(log.total1.samp = seq(0, 7, by = .5), summer.tot.precip.samp = c(min(plec$summer.tot.precip, na.rm = T), max(plec$summer.tot.precip, na.rm = T)))
+pred.dat.p$Seq <- 1:nrow(pred.dat.p)
+
+booted.p <- cross_join(pred.dat.p, plec_samp) %>% 
+  rename(interact = 7) %>% 
+  mutate(log.lambda = Intercept + summer.tot.precip.samp*summer.tot.precip+log.total1.samp*log.total1 + interact*log.total1.samp*summer.tot.precip.samp) %>% 
+  group_by(Seq, summer.tot.precip.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         summer.tot.precip = summer.tot.precip.samp)
+
+(summer.p <- plec %>% 
+  ggplot(aes(x = log.total1, y = log.lambda))+
+    geom_hline(yintercept=0, alpha = 0.25, linetype = "dashed")+
+    geom_point(alpha= 0.6, shape = 1, aes(size = summer.tot.precip))+
+    scale_size_continuous(range = c(2, 4)) +  # Adjust the size range as needed
+    scale_color_manual(values=c( "#B40F20", "#46acc8"))+
+    geom_line(data = booted.p, aes(x = log.total1, y = log.lambda, color = as.character(summer.tot.precip)), linewidth = 1.3)+
+    geom_ribbon(data = booted.p, aes(ymin = lower, ymax = upper, fill = as.character(summer.tot.precip)), linewidth = .75, alpha = 0.2)+
+    scale_fill_manual(values = c("#B40F20", "#46acc8"), guide = "none")+
+    labs(x = bquote(""~italic(Plectritis)*" per "~m^2*" + 1"), y = expression(italic("Plectritis")~log(N[t+1] / N[t])), color = "Summer Precip")+
+    guides(size = "none")+
+    scale_y_continuous(limits = c(-2.5, 3.4), breaks = seq(-2, 3, by = 1))+ 
+    scale_x_continuous(    breaks = log(c(1, 5, 25,  100, 400, 1000)),  # Log-transformed ticks
+    labels = c(1, 5, 25, 100, 400, 1000) )+
+    theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
+#ggsave(plot = summer.p, file = here("figures", "plec.summer.precip.png"), width = 6, height = 4, dpi = 300)
+
+```
+```{r tqe plectritis  summer maxtemp}
+sigma <- sigma(seablush2.4) #Environmental variability not captured by summer temperature
+Nc <- median(plec$total1) #97
+Nx <- 5
+tmax <- 30
+NumReps <- 50000
+# > min(plec$summer.mean.max.temp, na.rm = T)
+# [1] -1.961
+# > max(plec$summer.mean.max.temp, na.rm = T)
+# [1] 1.129
+
+set.seed(1234)
+
+N.cool <- rep(Nc, NumReps)
+N.warm <- rep(Nc, NumReps)
+
+Extant.cool <- numeric(tmax)
+Extant.warm <- numeric(tmax)
+
+int      <- fixef(seablush2.4)["(Intercept)"]
+sum.slope <- fixef(seablush2.4)["summer.mean.max.temp"]
+dens.slope <- fixef(seablush2.4)["log.total1"]
+interact  <- fixef(seablush2.4)["log.total1:summer.mean.max.temp"]
+
+for (t in 1:tmax) {
+  # COOL SUMMER
+  eta.cool <- int +
+    sum.slope * (min(plec$summer.mean.max.temp, na.rm = T)) +
+    dens.slope * log(N.cool) +
+    interact * log(N.cool) * (min(plec$summer.mean.max.temp, na.rm = T)) +
+    rnorm(length(N.cool), 0, sigma)
+
+  lambda.cool <- exp(eta.cool)
+  N.cool <- N.cool * lambda.cool
+  N.cool <- N.cool[N.cool > Nx]
+  Extant.cool[t] <- length(N.cool)
+
+  # WARM SUMMER
+  eta.warm <- int +
+    sum.slope * (max(plec$summer.mean.max.temp, na.rm = T)) +
+    dens.slope * log(N.warm) +
+    interact * log(N.warm) * (max(plec$summer.mean.max.temp, na.rm = T)) +
+    rnorm(length(N.warm), 0, sigma)
+
+  lambda.warm <- exp(eta.warm)
+  N.warm <- N.warm * lambda.warm
+  N.warm <- N.warm[N.warm > Nx]
+  Extant.warm[t] <- length(N.warm)
+}
+
+ProbExtinct.cool <- (NumReps - Extant.cool) / NumReps
+ProbExtinct.warm <- (NumReps - Extant.warm) / NumReps
+
+plectritis.qe <- data.frame(
+  Year = rep(1:tmax, 2),
+  Probability = c(ProbExtinct.cool, ProbExtinct.warm),
+  Condition = rep(c("Cool", "Warm"), each = tmax))
+
+# plot it
+(pqe <- ggplot(plectritis.qe, aes(x = Year, y = Probability, color = Condition)) +
+  geom_line(size = 1) + 
+  scale_color_manual(values = c("Cool" = "lightskyblue", "Warm" = "indianred1")) + 
+  labs(x = "Years", y = "Probability of Quasi-Extinction", color = "Summer Max Temp") +  
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank())+
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent)) 
+#ggsave(plot = pqe, file = here("figures", "plec.summer.temp.qe.png"), width = 6, height = 4, dpi = 300)
+
+```
+
+```{r PLECTRITIS }
+sigma <- sigma(seablush3.4) #Environmental variability not captured by summer temperature
+Nc <- median(plec$total1)#97
+Nx <- 5
+tmax <- 30
+NumReps <- 50000
+# > min(plec$summer.tot.precip, na.rm = T)
+# [1] -1.145
+# > max(plec$summer.tot.precip, na.rm = T)
+# [1] 1.815
+
+set.seed(1234)
+
+N.cool <- rep(Nc, NumReps)
+N.warm <- rep(Nc, NumReps)
+
+Extant.cool <- numeric(tmax)
+Extant.warm <- numeric(tmax)
+
+int      <- fixef(seablush3.4)["(Intercept)"]
+sum.slope <- fixef(seablush3.4)["summer.tot.precip"]
+dens.slope <- fixef(seablush3.4)["log.total1"]
+interact  <- fixef(seablush3.4)["log.total1:summer.tot.precip"]
+
+for (t in 1:tmax) {
+
+  # dry SUMMER (-2 SD)
+  eta.cool <- int +
+    sum.slope * (min(plec$summer.tot.precip, na.rm = T)) +
+    dens.slope * log(N.cool) +
+    interact * log(N.cool) * (min(plec$summer.tot.precip, na.rm = T)) +
+    rnorm(length(N.cool), 0, sigma)
+
+  lambda.cool <- exp(eta.cool)
+  N.cool <- N.cool * lambda.cool
+  N.cool <- N.cool[N.cool > Nx]
+  Extant.cool[t] <- length(N.cool)
+
+  # wet SUMMER (+2 SD)
+  eta.warm <- int +
+    sum.slope * (max(plec$summer.tot.precip, na.rm = T)) +
+    dens.slope * log(N.warm) +
+    interact * log(N.warm) * (max(plec$summer.tot.precip, na.rm = T)) +
+    rnorm(length(N.warm), 0, sigma)
+
+  lambda.warm <- exp(eta.warm)
+  N.warm <- N.warm * lambda.warm
+  N.warm <- N.warm[N.warm > Nx]
+  Extant.warm[t] <- length(N.warm)
+}
+
+ProbExtinct.cool <- (NumReps - Extant.cool) / NumReps
+ProbExtinct.warm <- (NumReps - Extant.warm) / NumReps
+
+plectritis.qe.sp <- data.frame(
+  Year = rep(1:tmax, 2),
+  Probability = c(ProbExtinct.cool, ProbExtinct.warm),
+  Condition = rep(c("Dry", "Wet"), each = tmax)
+)
+# Create the ggplot
+(pqe.sp <- ggplot(plectritis.qe.sp, aes(x = Year, y = Probability, color = Condition)) +
+  geom_line(size = 1) + 
+  scale_color_manual(values = c("Dry" = "#B40F20", "Wet" = "#46acc8")) +  
+  labs(x = "Years", y = "Probability of Quasi-Extinction", color = "Summer Precip") + 
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank())+
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent)) 
+
+#ggsave(plot = pqe.sp, file = here("figures", "plec.summer.precip.qe.png"), width = 6, height = 4, dpi = 300)
+
+
+```
+
+```{r}
+(summer.temp.together <- 
+  (summer + theme(legend.position = "none")) +
+  pqe +
+  plot_annotation(tag_levels = "a")+
+  theme(
+    legend.text  = element_text(size = 9),
+    legend.title = element_text(size = 10)
+  ))
+(summer.precip.together <- 
+  (summer.p+ theme(legend.position = "none"))+
+  pqe.sp + 
+  plot_annotation(tag_levels = "a")+
+  theme(
+    legend.text  = element_text(size = 9),
+    legend.title = element_text(size = 10)
+  ))
+#ggsave(plot = summer.temp.together, file = here("figures","plec.popdyn.summer.temp.png"), width = 9, height = 4, dpi = 300)
+ggsave(plot = summer.precip.together, file = here("figures", "plec.popdyn.summer.precip.png"), width = 9, height = 4, dpi = 300)
+
+```
+
+
+```{r br moodel selection t}
+bromus <- bromus %>% 
+  mutate(log.lambda = log(lambda1),
+         log.total1 = log(total1))
+ 
+sterilis_base <- lmer(log.lambda ~ 1+(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis_density <- lmer(log.lambda ~ log.total1 + (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis_density.q <- lmer(log.lambda ~ I(log.total1^2) + log.total1 +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis_trt <- lmer(log.lambda ~ log.total1+trt + (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis_trt.int <- lmer(log.lambda ~ log.total1*trt + (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis_trt.alone<- lmer(log.lambda ~ trt + (1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis1 <- lmer(log.lambda ~ log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis1.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis1.1 <- lmer(log.lambda ~ log.total1+spring.tot.precip + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis1.2 <- lmer(log.lambda ~ log.total1+spring.tot.precip *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis1.3<- lmer(log.lambda ~ log.total1*spring.tot.precip +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis1.4 <- lmer(log.lambda ~ log.total1*spring.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis1.5 <- lmer(log.lambda ~ spring.tot.precip +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis2 <- lmer(log.lambda ~ log.total1+summer.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis2.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+summer.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis2.1 <- lmer(log.lambda ~ log.total1+summer.mean.max.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis2.2 <- lmer(log.lambda ~ log.total1+summer.mean.max.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis2.3<- lmer(log.lambda ~ log.total1*summer.mean.max.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis2.4 <- lmer(log.lambda ~ log.total1*summer.mean.max.temp + (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis2.5 <- lmer(log.lambda ~ summer.mean.max.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis3 <- lmer(log.lambda ~ log.total1+summer.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis3.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+summer.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis3.1 <- lmer(log.lambda ~ log.total1+summer.tot.precip + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis3.2 <- lmer(log.lambda ~ log.total1+summer.tot.precip *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis3.3<- lmer(log.lambda ~ log.total1*summer.tot.precip +trt  + (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis3.4 <- lmer(log.lambda ~ log.total1*summer.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis3.5 <- lmer(log.lambda ~ summer.tot.precip +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis4 <- lmer(log.lambda ~ log.total1+spring.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+spring.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.1 <- lmer(log.lambda ~ log.total1+spring.mean.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.2 <- lmer(log.lambda ~ log.total1+spring.mean.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.3<- lmer(log.lambda ~ log.total1*spring.mean.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis4.4 <- lmer(log.lambda ~ log.total1*spring.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.5 <- lmer(log.lambda ~ spring.mean.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis5 <- lmer(log.lambda ~ log.total1+fall.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+fall.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.1 <- lmer(log.lambda ~ log.total1+fall.mean.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.2 <- lmer(log.lambda ~ log.total1+fall.mean.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.3<- lmer(log.lambda ~ log.total1*fall.mean.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis5.4 <- lmer(log.lambda ~ log.total1*fall.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.5 <- lmer(log.lambda ~ fall.mean.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis6 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.1 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.2 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.3<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis6.4 <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.5 <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+
+
+models.bromus <- mget(ls(pattern = "^sterilis"))
+bromus_AICc<-aictab(cand.set = models.bromus,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+```
+
+```{r}
+summary(sterilis6)
+fixef(sterilis6)
+coefs <- summary(sterilis6)$coefficients
+
+bromus_best <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"])
+write.csv(bromus_best, here("tables", "bromus_best_fit_coeff.csv"), row.names = F)
+
+```
+
+
+```{r}
+bromus_AICc2 <- bromus_AICc
+bromus_AICc2$Modnames <- gsub("sterilis_base", "1", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis_density.q", "N² + N", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis_density", "N", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis_trt.alone", "trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis_trt.int", "N × trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis_trt", "N + trt", bromus_AICc2$Modnames)
+
+bromus_AICc2$Modnames <- gsub("sterilis1.1", "N + SpP + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis1.2", "N + SpP × trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis1.3", "N × SpP + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis1.4", "N × SpP", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis1.5", "SpP", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis1.q", "N² + N + SpP", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis1", "N + SpP", bromus_AICc2$Modnames)
+
+bromus_AICc2$Modnames <- gsub("sterilis2.1", "N + SuT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis2.2", "N + SuT × trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis2.3", "N × SuT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis2.4", "N × SuT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis2.5", "SuT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis2.q", "N² + N + SuT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis2", "N + SuT", bromus_AICc2$Modnames)
+
+bromus_AICc2$Modnames <- gsub("sterilis3.1", "N + SuP + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis3.2", "N + SuP x trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis3.3", "N x SuP + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis3.4", "N x SuP", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis3.5", "SuP", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis3.q", "N² + N + SuP", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis3", "N + SuP", bromus_AICc2$Modnames)
+
+bromus_AICc2$Modnames <- gsub("sterilis4.1", "N + SpT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis4.2", "N + SpT × trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis4.3", "N × SuP + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis4.4", "N × SuT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis4.5", "SuT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis4.q", "N² + N + SuT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis4", "N + SuT", bromus_AICc2$Modnames)
+
+bromus_AICc2$Modnames <- gsub("sterilis5.1", "N + FT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis5.2", "N + FT × trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis5.3", "N × FT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis5.4", "N × FT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis5.5", "FT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis5.q", "N² + N + FT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis5", "N + FT", bromus_AICc2$Modnames)
+
+bromus_AICc2$Modnames <- gsub("sterilis6.1", "N + WT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis6.2", "N + WT × trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis6.3", "N × WT + trt", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis6.4", "N × WT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis6.5", "WT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis6.q", "N² + N + WT", bromus_AICc2$Modnames)
+bromus_AICc2$Modnames <- gsub("sterilis6", "N + WT", bromus_AICc2$Modnames)
+
+pop.model.b <- bromus_AICc2 %>% 
+    rename(Model = Modnames) %>% 
+    mutate_at(3:8, round, 3) %>% 
+    select(c(1:4, 6))%>%
+    mutate(species = "Bromus",
+           Rank = 1:n()) %>% 
+  relocate(species, .before =1) %>% 
+  filter(Rank %in% c(1:10, 44))
+
+pop.model.b %>% gt() %>% gtsave(file = here("tables", "POPDYN.bromus.docx"))
+#if there is an error it's because the doc already exists (delete it from wherever its saved ro resave it)
+
+```
+
+
+```{r bromus bootstrapped pop dyn}
+boot = 1000
+set.seed(12345)
+
+#parametric bootstrap
+#make matrix of random draws
+br_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(sterilis6), Sigma=vcov(sterilis6)))
+colnames(br_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.st <- expand.grid(log.total1.samp = seq(0, 7, by = .5), winter.mean.min.temp.samp = c(min(bromus$winter.mean.min.temp, na.rm = T), max(bromus$winter.mean.min.temp, na.rm = T)))
+pred.dat.st$Seq <- 1:nrow(pred.dat.st)
+
+booted.b <- cross_join(pred.dat.st, br_samp) %>% 
+  mutate(log.lambda = Intercept + winter.mean.min.temp.samp*winter.mean.min.temp+log.total1.samp*log.total1) %>% 
+  group_by(Seq, winter.mean.min.temp.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         winter.mean.min.temp = winter.mean.min.temp.samp)
+
+(winter.boot <- bromus %>% 
+  ggplot(aes(x = log.total1, y = log.lambda))+
+    geom_hline(yintercept=0, alpha = 0.25, linetype = "dashed")+
+    geom_point(alpha= 0.6, shape = 1, aes(size =  winter.mean.min.temp))+
+      scale_size_continuous(range = c(2, 4)) +  # Adjust the size range as needed
+  scale_color_manual(values=c("#4059ae", "#f3b942"))+
+  geom_line(data = booted.b, aes(x = log.total1, y = log.lambda, color = as.character(winter.mean.min.temp)), linewidth = 1.3)+
+  geom_ribbon(data = booted.b, aes(ymin = lower, ymax = upper, fill = as.character(winter.mean.min.temp)), linewidth = .75, alpha = 0.2)+
+  scale_fill_manual(values = c("#4059ae", "#f3b942"), guide = "none")+
+  labs(x = bquote(""~italic(Bromus)*" per "~m^2*" + 1"), y = expression(italic("Bromus")~log(N[t+1] / N[t])), color = "Winter Min Temp")+
+  guides(size = "none")+
+  scale_y_continuous(limits = c(-2.5, 3.4), breaks = seq(-2, 3, by = 1))+ 
+    scale_x_continuous(    breaks = log(c(1, 5, 25,  100, 400, 1000)),  # Log-transformed ticks
+    labels = c(1, 5, 25, 100, 400, 1000) )+
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank())
+)
+
+#ggsave(plot = winter.boot, file = here("figures", "bromus.winter.boot.png"), width = 6, height = 4, dpi = 300)
+
+```
+
+
+```{r bromus pva}
+sigma <-sigma(sterilis6)
+
+Nc <- median(bromus$total1) #69
+Nx <- 5
+tmax <- 30
+NumReps <- 50000
+# > min(bromus$winter.mean.min.temp, na.rm = T)
+# [1] -0.99
+# > max(bromus$winter.mean.min.temp, na.rm = T)
+# [1] 0.915
+
+set.seed(1234)
+
+N.cool <- rep(Nc, NumReps)
+N.warm <- rep(Nc, NumReps)
+
+Extant.cool <- numeric(tmax)
+Extant.warm <- numeric(tmax)
+
+int      <- fixef(sterilis6)["(Intercept)"]
+wint.slope <- fixef(sterilis6)["winter.mean.min.temp"]
+dens.slope <- fixef(sterilis6)["log.total1"]
+
+for (t in 1:tmax) {
+
+  # COOL SUMMER
+  eta.cool <- int +
+    wint.slope * (min(bromus$winter.mean.min.temp, na.rm = T)) +
+    dens.slope * log(N.cool) +
+    rnorm(length(N.cool), 0, sigma)
+
+  lambda.cool <- exp(eta.cool)
+  N.cool <- N.cool * lambda.cool
+  N.cool <- N.cool[N.cool > Nx]
+  Extant.cool[t] <- length(N.cool)
+
+  # WARM SUMMER
+  eta.warm <- int +
+    wint.slope * (max(bromus$winter.mean.min.temp, na.rm = T)) +
+    dens.slope * log(N.warm) +
+    rnorm(length(N.warm), 0, sigma)
+
+  lambda.warm <- exp(eta.warm)
+  N.warm <- N.warm * lambda.warm
+  N.warm <- N.warm[N.warm > Nx]
+  Extant.warm[t] <- length(N.warm)
+}
+
+ProbExtinct.cool <- (NumReps - Extant.cool) / NumReps
+ProbExtinct.warm <- (NumReps - Extant.warm) / NumReps
+
+bromus.qe <- data.frame(
+  Year = rep(1:tmax, 2),
+  Probability = c(ProbExtinct.cool, ProbExtinct.warm),
+  Condition = rep(c("Cool", "Warm"), each = tmax))
+
+# plot it
+(bqe <- ggplot(bromus.qe, aes(x = Year, y = Probability, color = Condition)) +
+  geom_line(size = 1) +  
+  scale_color_manual(values = c("Cool" = "#4059ae", "Warm" = "#f3b942")) +  # Custom colors
+  labs(x = "Years", y = "Probability of Quasi-Extinction", color = "Winter Min Temp") +  # Labels
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank())+
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent)) 
+
+ggsave(plot = bqe, file = here("figures", "br.wint.temp.qe.png"), width = 6, height = 4, dpi = 300)
+
+(bromus.together <- 
+  (winter.boot+ theme(legend.position = "none"))+
+  bqe + 
+  plot_annotation(tag_levels = "a")+
+  theme(legend.text  = element_text(size = 9),
+    legend.title = element_text(size = 10)))
+
+#ggsave(plot = bromus.together, file = here("figures", "bromus.popdyn.png"), width = 9, height = 4, dpi = 300)
+```
+
+```{r joining all together}
+(all <- summer.temp.together/bromus.together  + plot_annotation(tag_levels = "a"))
+ggsave(plot = all, file = here("figures", "Figure1.png"), width = 10, height = 8, dpi = 300)
+
+```
+
+```{r climate summary - not included}
+(climate.summary <- climate %>% 
+  pivot_longer(cols = -year, names_to = "variable", values_to = "value") %>%
+  mutate(season = sub("\\..*", "", variable),
+    type = ifelse(grepl("precip", variable), "precip", "temp"),
+    season = factor(season, levels = c("winter","spring","summer","fall"))) %>% 
+    mutate(season = factor(season,
+                         levels = c("spring", "summer", "fall", "winter"))) %>% 
+  filter(variable == "spring.tot.precip"|variable == "summer.tot.precip"|variable == "summer.mean.max.temp"|variable == "spring.mean.temp"|variable == "fall.mean.temp"|variable == "winter.mean.min.temp") %>% 
+  ggplot(aes(x = year, y = value, color = type, group = variable))+
+  geom_line()+
+  facet_wrap(~season)+
+  scale_color_manual(values = c("#056c98", "#fb9124"))+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5),
+        strip.background = element_rect(fill = "white"),
+        #strip.text = element_blank(), 
+        panel.grid = element_blank(),
+        axis.line=element_line())+
+  labs(x = "", y = "Standardized climate", color = ""))
+```

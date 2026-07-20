@@ -1,0 +1,539 @@
+---
+title: "dactylis.ipm"
+author: "JL"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r packages}
+## Primula vital rates with climate data
+library(here)
+library(tidyverse)
+library(AICcmodavg)
+library(lme4)
+library(patchwork) #for putting plots into one
+library(popbio)
+theme_set(theme_classic(base_size = 18)) #for ggplot
+```
+test
+```{r}
+dac <- read.csv(here("clean_data", "Dactylis_Demography_Data_CLEANED_2016thru2026.csv"))
+climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
+climate<- climate %>%
+  arrange(year) %>%
+  mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))
+
+future.climate <- read.csv(here("clean_data", "CGOP_future_climate_values.csv"))
+
+
+dac <- left_join(dac, climate, by = c("Year" = "year"))
+dac <- dac %>% 
+  mutate(Year = as.factor(Year), 
+         Plot = as.factor(Plot),
+         survT = as.factor(survT),
+         survT1 = as.factor(survT1),
+         pflowerT = as.factor(pflowerT),
+         pflowerT1 = as.factor(pflowerT1),
+         log.no.stems = log(No.stems),
+         log.no.stemsT1 = log(No.stemsT1),
+        trt = as.factor(trt),
+        trt = fct_relevel(trt, "irrigated", "control", "drought"))
+
+dac <- dac %>% 
+  filter(!(Plot %in% c("4", "5", "15")))
+
+dac.surv <- dac %>% 
+  filter(!Year =="2026",
+  !is.na(survT1)) 
+
+# gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+# fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+# sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.survival, family = "binomial")
+# # poisson.prev_spring.mean.temp.int <- glmer(No.panicles ~ log.no.stems *prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# gm.su.sp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+# 
+# fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+# 
+# sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+# 
+# poisson.sp.wt.int2 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+gm.su.sp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+poisson.sp.wt.int2 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+dac.new <- dac %>% 
+  filter(stage == "seedling") %>% 
+  group_by(plantid) %>%
+  slice_min(as.numeric(as.character(Year)), n = 1, with_ties = FALSE)
+#parameters for new plants
+new_sd <- sd(dac.new$log.no.stems)
+new_mean <- mean(dac.new$log.no.stems, na.rm = T)
+hist(dac.new$log.no.stems)
+
+#Define the min and max size, which are the integration bounds of the IPM.
+minRealsize <- min(dac$log.no.stems, na.rm=T) 
+maxRealsize <- 1.1* max(dac$log.no.stems,na.rm=T)
+
+#now add a new min & max size to keep the plants in for eviction
+##note: this could be wrong for dactylis because -1 log. no stems seem weird! Would be .1 stems
+min.size <-minRealsize-1 #lower
+max.size <-maxRealsize+1.5 #upper
+
+climate <- climate %>% 
+  mutate(year = as.factor(year)) %>% 
+  filter(year != "2015")
+```
+
+```{r}
+#pancile to seedlings proxy:
+#panciles in year t is a function of the number of panicles in the plot in the year prior
+#so to get the transition rate: number of seedlings in t/#panciles year t-1 (PER PLOT - for now)
+plot_summary <- dac %>%
+  group_by(Plot, Year) %>%
+  summarise(
+    seedlings_t = sum(stage == "seedling", na.rm = TRUE),
+    panicles_t = sum(No.panicles, na.rm = TRUE),
+    .groups = "drop") %>% 
+  drop_na()
+plot_summary <- plot_summary %>% 
+  arrange(Plot, Year) %>%
+  group_by(Plot) %>%
+  mutate(panicles_tminus1 = lag(panicles_t)) %>%
+  drop_na() %>% 
+ # ungroup() %>% 
+  mutate(germ.rate = seedlings_t/panicles_tminus1) %>% 
+  filter(is.finite(germ.rate))
+#pest <- mean(plot_summary$germ.rate) #so 0.1 seems really high! One panicle has a 10% chance of making a seedling...
+pest <- .0001
+
+pest.sd <- sd(plot_summary$germ.rate)
+min(plot_summary$germ.rate)
+max(plot_summary$germ.rate)
+#this is coarse! But ok for the first stab
+```
+
+```{r parameters}
+#this is for range of climates spring.mean.temp, prev_spring.mean.temp, summer.tot.precip, winter.mean.min.temp, prev_winter.tot.precip
+
+# rows <- expand.grid(summer.tot.precip = seq(-2, 2, by = 1), prev_spring.mean.temp = seq(-2, 2, by = 1),  spring.mean.temp = seq(-2, 2, by = 1),prev_winter.tot.precip = seq(-2, 2, by = 1),winter.mean.min.temp = seq(-2, 2, by = 1)) 
+
+rows <- climate %>% 
+  rename(Year = year) %>% 
+  select(Year, spring.mean.temp, prev_spring.mean.temp, summer.tot.precip, winter.mean.min.temp, prev_winter.tot.precip)
+#set up an empty parameter df
+params=data.frame(
+	growth.int = c(NA),
+	growth.slope  = NA,
+	growth.sd=NA,
+	surv.int=NA,
+	surv.slope=NA,
+	pflow.int = NA,
+	pflow.slope = NA,
+	no.flow.int=NA,
+	no.flow.slope=NA,
+	recruit.size.mean=NA,
+	recruit.size.sd=NA,
+	pest = NA
+)
+params <- bind_cols(params, rows)
+
+scenarios <- expand.grid(scenario = c("current", "future1", "future2"))
+params <- crossing(params, scenarios)
+
+#adding in random effects
+#growth
+re_year_growth <- ranef(gm.su.sp)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(growth_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_growth, by = "Year") #%>% 
+  #filter(!is.na(growth_re))
+
+#pflower
+re_year_pflower <- ranef(fm.prev_spring.mean.temp)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(pflower_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_pflower, by = "Year") 
+
+#survival
+re_year_surv <- ranef(sm.wt.sp.int)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(surv_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_surv, by = "Year") 
+
+#no panciles
+re_year_no.flow <- ranef(poisson.sp.wt.int2)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(no.flow_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_no.flow, by = "Year") 
+
+ 
+
+#for any years without data, make 0 (average RE)
+params <- params %>%
+  mutate(across(
+      c(growth_re, pflower_re, no.flow_re,
+        surv_re),
+      ~ tidyr::replace_na(., 0)))
+
+params <- params %>% 
+  filter(Year!="2026")
+```
+
+```{r}
+### 1. GROWTH
+#gm.su.sp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+growth <- fixef(gm.su.sp)
+#growth intercept
+params$growth.int <- growth["(Intercept)"] + growth["summer.tot.precip"] * params$summer.tot.precip + growth["spring.mean.temp"] * params$spring.mean.temp + params$growth_re
+#growth slope
+params$growth.slope <- growth["log.no.stems"]
+
+growth_var <- as.data.frame(VarCorr(gm.su.sp)) #assumes same variance across all
+params$growth.sd <- growth_var[growth_var$grp=="Residual","sdcor"] # growth sd of residuals
+
+### 2. pflower
+#fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+flowering <- fixef(fm.prev_spring.mean.temp)
+#intercept
+params$pflow.int<- flowering["(Intercept)"] + flowering["prev_spring.mean.temp"] * params$prev_spring.mean.temp + params$pflower_re
+#slope:
+params$pflow.slope <- flowering["log.no.stems"]
+
+####################### 3. no.flowers
+#poisson.sp.wt.int2 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+panicles <- fixef(poisson.sp.wt.int2)
+
+params$no.flow.int <- panicles["(Intercept)"] +
+  panicles["prev_spring.mean.temp"] * params$prev_spring.mean.temp +
+  panicles["prev_winter.tot.precip"] * params$prev_winter.tot.precip + params$no.flow_re
+
+params$no.flow.slope <- panicles["log.no.stems"] +
+  panicles["log.no.stems:prev_winter.tot.precip"] * params$prev_winter.tot.precip
+
+### 4. sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.survival, family = "binomial")
+survival <- fixef(sm.wt.sp.int)
+
+params$surv.int <- survival["(Intercept)"] +
+  survival["prev_spring.mean.temp"] * params$prev_spring.mean.temp +
+  survival["winter.mean.min.temp"] * params$winter.mean.min.temp + params$surv_re
+
+params$surv.slope <- survival["log.no.stems"] +
+  survival["log.no.stems:prev_spring.mean.temp"] * params$prev_spring.mean.temp
+
+
+#params$no.seeds <- no.seeds
+params$pest <- pest
+params$recruit.size.mean <- new_mean # mean new 
+params$recruit.size.sd<- new_sd # sd of new 
+
+
+```
+
+```{r}
+###~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+###         Load functions
+###~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#SURVIVAL AT SIZE X
+s.x=function(x,params) {
+	u=exp(params$surv.int+params$surv.slope*x)
+	return(u/(1+u))
+}
+
+#how to test this: 
+### run function for a plant of size 1 and for the first row of parameters
+#s.x(x = 1, params = params[1,])
+### run function for a plant of size 1 but for all rows of parameters (so get a list )
+#s.x(x = 1, params = params)
+#ok this works and seems to work for all rows of params. great.
+
+#GROWTH FROM SIZE X TO Y; 
+  ## returns a *probability density distribution* for each x value
+g.yx<-function(y,x,params){
+    # eviction here...
+  xb=pmin(pmax(x,minRealsize),maxRealsize) #Transforms all values below/above limits in min/max size (floor & ceiling)
+  growth_to_newsize <-params$growth.int + params$growth.slope*xb
+  growth_sd <- params$growth.sd
+  return(dnorm(y,mean=growth_to_newsize,sd=growth_sd))
+  #dnorm(y,mean=params$growth.int + params$growth.slope*x,sd=params$growth.sd)
+}
+
+#Tom Miller's combined s and g kernel
+P <- function(y, x, params){
+  s.x(x, params)*g.yx(y, x, params)
+}
+
+#PROBABILITY OF FLOWERING OF SIZE X individuals
+pf.x <-function(x,params){
+	u<-exp(params$pflow.int+params$pflow.slope*x)
+	return(u/(1+u))
+}
+#testing this for a plant of size 5
+#pf.x(x = 8,params = params_expanded)
+
+f.yx <- function(x,params) { 		
+  return(pf.x(x,params)*exp(params$no.flow.int+params$no.flow.slope*x)* params$pest)
+}
+##so this should be outputting the number of new plants made? Yes. pflower * how many flowers made * p(panicle making seedling)
+#f.yx(x = 7,params = params_original)
+
+
+##do big plants make a million flowers?
+#exp(params$no.flow.int+params$no.flow.slope*8) 
+## no they make a reasonable amount
+
+#SIZE DISTRIBUTION OF RECRUITS - so the ones going from the continuous into the continuous stage. 
+recruit.size<-function(y,params){
+    ## returns a *probability density distribution*
+  dnorm(y,mean=params$recruit.size.mean,sd=params$recruit.size.sd)
+}
+```
+
+```{r}
+params_list <-  filter(params) %>% split(., seq(nrow(.))) #this splits up params into X rows, which I can feed into the function below
+
+###
+mat.size = 100 #dimensions of continuous matrix
+bigmatrix <- function(params_list, mat.size){
+
+  n <- mat.size
+  L <- min.size
+  U <- max.size
+
+  # mesh
+  h <- (U - L) / n
+  b <- L + c(0:n) * h
+  y <- 0.5 * (b[1:n] + b[2:(n+1)])
+
+  # Fertility matrix
+  Fmat <- matrix(0, n, n)
+
+  # recruits of size y from parent size x
+  Fmat <- outer(y, y, function(y,x){
+    f.yx(x, params_list) * recruit.size(y, params_list)
+  }) * h
+
+  # Growth/survival
+  Tmat <- t(outer(y, y, P, params = params_list)) * h
+
+  # Full kernel
+  IPMmat <- Fmat + Tmat
+
+  out_matrix <- list(
+    IPMmat = IPMmat,
+    Fmat = Fmat,
+    Tmat = Tmat,
+    meshpts = y)
+
+  out_lamb <- data.frame(
+    Year = params_list$Year,
+    lambda = lambda(IPMmat),
+    prev_spring.mean.temp = params_list$prev_spring.mean.temp,
+    winter.mean.min.temp = params_list$winter.mean.min.temp,
+    summer.tot.precip = params_list$summer.tot.precip,
+    spring.mean.temp = params_list$spring.mean.temp,
+    prev_winter.tot.precip= params_list$prev_winter.tot.precip)
+
+return(list(
+  IPMmat = IPMmat,
+  Fmat = Fmat,
+  Tmat = Tmat,
+  meshpts = y,
+  lambda = out_lamb))
+}
+
+#what I want returned is lambdas
+lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!
+
+#great~! now make it a df
+results <- lapply(params_list, bigmatrix, mat.size = mat.size)
+
+dac_lambda <- do.call(rbind, lapply(results, function(x) x$lambda))
+
+kernels <- lapply(results, function(x) x$IPMmat)
+kernel_info <- params %>%
+  select(Year)
+```
+
+
+
+```{r yearly lambda figure}
+
+#lom_lambda <- do.call(rbind, lamb_lists)
+#y_limits <- c(1.05, 1.2)
+(yearly <- dac_lambda %>%
+  ggplot(aes(x = Year, y = lambda, group = 1)) +
+  geom_line(size = 1.2) +
+  labs(
+    x = "year",
+    y = expression(lambda)) )
+
+
+(wt.p <- ggplot(dac_lambda, aes(x = prev_winter.tot.precip, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+  labs(
+    x = "Previous winter precipitation",
+    y = expression(lambda),
+    color = "Year" ))
+(sm.p <- ggplot(dac_lambda, aes(x = summer.tot.precip, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+  labs(x = "Summer precipitation",
+    y = expression(lambda),
+    color = "Year"))
+
+(wt.t<- ggplot(dac_lambda, aes(x = winter.mean.min.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+  labs(
+    x = "Winter min temperature",
+    y = expression(lambda),
+    color = "Year" ))
+(prev.sp <- ggplot(dac_lambda, aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+  labs(x = "Previous spring mean temperature",
+    y = expression(lambda),
+    color = "Year"))
+(sp <- ggplot(dac_lambda, aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
+  geom_point(size = 2) +
+  labs(x = "Spring mean temperature",
+    y = expression(lambda),
+    color = "Year"))
+# (sp.temp <- dac_lambda %>%
+#   filter(summer.tot.precip == 0, summer.mean.max.temp == 0) %>% 
+#   ggplot(aes(x = spring.temp, y = lambda, color = trt)) +
+#   geom_line(size = 1.2) +
+#   scale_y_continuous(limits = y_limits) +
+#   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+#   labs(
+#     x = "Spring Temperature",
+#     y = expression(lambda),
+#     color = ""
+#   ) )
+ (together <- (wt.p + wt.t)/ (prev.sp + sp) / (sm.p +  plot_spacer())+  plot_layout(guides = "collect"))
+
+ggsave(here("Figures", "Dactylis", "dac.yearly.pop.growth.png"), plot = yearly, width = 7.5, height =5)
+ggsave(here("Figures", "Dactylis", "yearly.pop.growth.by.climate.png"), plot = together, width = 12, height =8)
+
+```
+
+
+
+```{r  sim}
+
+
+stochastic_lambda <- function(kernels, T = 100, burn = 1) { #run the simulation for 50 years
+
+  n <- nrow(kernels[[1]])
+
+  # initial population - this is a nomralized pop, so doesnt matter the absolute amount
+  N <- rep(1, n)
+  N <- N / sum(N) 
+
+  log_growth <- numeric(T)
+
+  for (t in seq_len(T)) {
+
+    # sample one year's kernel
+    K <- kernels[[sample.int(length(kernels), 1)]] #equal change of each kernel being selected
+
+    N_next <- K %*% N #multiplied pop vector by the selected kernel
+
+    log_growth[t] <- log(sum(N_next)) #get lambda by n/nt+1
+
+    N <- N_next / sum(N_next)
+  }
+
+  exp(mean(log_growth[(burn + 1):T]))
+}
+
+# stoch_lambdas <- replicate(
+#   1000,
+#   stochastic_lambda(kernels)
+# )
+# 
+# control_kernels <- kernels[kernel_info$trt == "control"]
+# drought_kernels <- kernels[kernel_info$trt == "drought"]
+# irrigated_kernels <- kernels[kernel_info$trt == "irrigated"]
+
+set.seed(123)
+
+stoch_lambda <- replicate(
+  100, #run that X year simulation Y times
+  stochastic_lambda(kernels)
+)
+
+
+mean(stoch_lambda)
+quantile(stoch_lambda, c(0.025, 0.975))
+
+mean(drought_lambda)
+quantile(drought_lambda, c(0.025, 0.975))
+
+mean(irrigated_lambda)
+quantile(irrigated_lambda, c(0.025, 0.975))
+
+
+```
+
+```{r}
+stochastic_sim <- function(kernels, T = 1000) {
+
+  n <- nrow(kernels[[1]])
+
+  N <- rep(1, n)
+  N <- N / sum(N)
+
+  pop_size <- numeric(T + 1)
+  pop_size[1] <- sum(N)
+
+  kernel_used <- integer(T)
+
+  for (t in seq_len(T)) {
+
+    k <- sample.int(length(kernels), 1)
+    kernel_used[t] <- k
+
+    N <- kernels[[k]] %*% N
+    pop_size[t + 1] <- sum(N)
+  }
+
+  # list(
+  #   pop_size = pop_size,
+  #   kernels = kernel_used
+  # )
+  return(pop_size)
+}
+sim <- stochastic_sim(kernels, T = 100) #runs that function once
+
+sims <- replicate(
+  100,
+  stochastic_sim(kernels, T = 100)
+)
+
+dim(sims)
+
+
+matplot(
+  x = 0:100,
+  y = sims,
+  type = "l",
+  lty = 1,
+  col = rgb(0, 0, 1, 0.2),
+  xlab = "Year",
+  ylab = "Population size"
+)
+
+# plot(sim$pop_size, type = "l")
+# head(sim$kernels)
+```
+

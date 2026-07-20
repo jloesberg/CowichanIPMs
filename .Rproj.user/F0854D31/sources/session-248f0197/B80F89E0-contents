@@ -1,0 +1,962 @@
+---
+title: "dactylis"
+author: "JL"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r}
+library(here)
+library(tidyverse)
+library(lme4)
+library(AICcmodavg)
+library(patchwork)
+theme_set(theme_classic(base_size = 18)) #for ggplot
+
+```
+
+```{r}
+dac <- read.csv(here("clean_data", "Dactylis_Demography_Data_CLEANED_2016thru2026.csv"))
+climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
+climate<- climate %>%
+  arrange(year) %>%
+  mutate(across(-year, ~lag(.x), .names = "prev_{.col}")) %>% 
+  select(c(year, winter.mean.min.temp, prev_winter.mean.min.temp, summer.mean.max.temp, prev_summer.mean.max.temp, spring.mean.temp, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, ends_with("tot.precip")))
+
+dac <- left_join(dac, climate, by = c("Year" = "year"))
+dac <- dac %>% 
+  mutate(Year = as.factor(Year), 
+         Plot = as.factor(Plot),
+         survT = as.factor(survT),
+         survT1 = as.factor(survT1),
+         pflowerT = as.factor(pflowerT),
+         pflowerT1 = as.factor(pflowerT1),
+         log.no.stems = log(No.stems),
+         log.no.stemsT1 = log(No.stemsT1),
+        trt = as.factor(trt),
+        trt = fct_relevel(trt, "irrigated", "control", "drought"))
+
+dac <- dac %>% 
+  filter(!(Plot %in% c("4", "5", "15")))
+
+dac.surv <- dac %>% 
+  filter(!Year =="2026",
+  !is.na(survT1)) 
+```
+
+```{r ground truthing lambda}
+lam <- dac %>%
+ # filter(Xcoor < 10) %>%
+  mutate(Year = as.numeric(as.character(Year))) %>%  # fix ordering
+  group_by(Year, Plot) %>%
+  summarise(
+    n = sum(survT == 1, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(Plot, Year) %>%
+  group_by(Plot) %>%
+  mutate(
+    lambda = lead(n) / n
+  ) %>%
+  ungroup()
+(lambda <- ggplot(lam, aes(x = as.character(Year), y = lambda, color = Plot)) +
+  geom_line(aes(group = Plot), alpha = 0.5) +
+  geom_point() +
+  geom_hline(yintercept = 1)+
+  labs(x = "Year", y = expression(lambda)) +
+  theme_minimal())
+(n <- ggplot(lam, aes(x = as.character(Year), y = n, color = Plot)) +
+  geom_line(aes(group = Plot), alpha = 0.5) +
+  geom_point() +
+  labs(x = "Year", y = "Number of plants") +
+  theme_minimal())
+(to <- lambda/n +plot_layout(guides = "collect")
+)
+ggsave(here("Figures", "Dactylis", "groundtruth.lambda.png"), plot = to, width = 8, height =6)
+
+```
+```{r Sample Plots}
+#sample plots
+dac %>% ggplot(aes(x = log.no.stems, y = log.no.stemsT1, color = trt))+
+  geom_point()+
+  geom_abline(slope=1, intercept = 0, color= "black", linewidth = .2)
+dac %>% ggplot(aes(x = log.no.stems, y = log.no.stemsT1, color = trt))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)+
+  facet_wrap(~Year)+
+  geom_abline(slope=1, intercept = 0, color= "black", linewidth = .2)
+dac %>% ggplot(aes(x = log.no.stems, y = log.no.stemsT1, color = trt))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)+
+  facet_wrap(~Plot)+
+  geom_abline(slope=1, intercept = 0, color= "black", linewidth = .2)
+#plots 5, 4, 15 may need to be excluded - not many individuals for the random effects
+
+#survival
+dac %>% filter(!is.na(survT1)) %>% 
+  ggplot(aes(x = log.no.stems, y = as.numeric(survT1), color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="binomial"), se = F)
+dac %>% filter(!is.na(survT1)) %>% 
+  ggplot(aes(x = log.no.stems, y = as.numeric(survT1), color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="binomial"), se = F)+
+  facet_wrap(~Year)
+dac %>% filter(!is.na(survT1)) %>% 
+  ggplot(aes(x = log.no.stems,  y = as.numeric(survT1), color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="binomial"), se = F)+
+  facet_wrap(~Plot)
+
+#flowering
+dac %>% filter(!is.na(pflowerT)) %>% 
+  ggplot(aes(x = log.no.stems, y = as.numeric(pflowerT)-1, color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="binomial"), se = F)
+dac %>% filter(!is.na(pflowerT)) %>% 
+  ggplot(aes(x = log.no.stems, y = as.numeric(pflowerT), color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="binomial"), se = F)+
+  facet_wrap(~Year)
+dac %>% filter(!is.na(pflowerT)) %>% 
+  ggplot(aes(x = log.no.stems,  y = as.numeric(pflowerT), color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="binomial"), se = F)+
+  facet_wrap(~Plot)
+
+#no.panicles
+dac %>% filter(pflowerT == 1) %>% 
+  ggplot(aes(x = log.no.stems, y = No.panicles, color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="poisson"), se = F)
+dac %>% filter(pflowerT == 1) %>% 
+  ggplot(aes(x = log.no.stems, y = No.panicles, color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="poisson"), se = F)+
+  facet_wrap(~Year)
+dac %>% filter(pflowerT == 1) %>% 
+  ggplot(aes(x = log.no.stems,  y = No.panicles, color = trt))+
+  geom_point()+
+  geom_smooth(method="glm",
+    method.args=list(family="poisson"), se = F)+
+  facet_wrap(~Plot)
+```
+```{r what size metric to use, and for pflower}
+#whats a better size measurement - log(no.stems *height) or log(no.stems)?
+size.test1 <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Plot) + (1|Year), data = dac, REML = F)
+size.test2 <- lmer(log.no.stemsT1 ~ log(No.stems*Height) + (1|Plot) + (1|Year), data = dac, REML = F)
+AIC(size.test1, size.test2)
+#first one
+
+#size in current year or past year for flowering
+dac_complete <- dac[complete.cases(dac[, c("pflowerT", "pflowerT1", "log.no.stems", "Year", "Plot")]), ]
+f.test1  <- glmer(pflowerT ~ log.no.stems+ (1|Year) + (1|Plot) , data = dac_complete, family = "binomial")
+f.test2  <- glmer(pflowerT1 ~ log.no.stems+ (1|Year) + (1|Plot) , data = dac_complete, family = "binomial")
+AIC(f.test1, f.test2) #one is better
+
+table(dac$survT1, dac$Year)
+table(dac$pflowerT, dac$Year)
+table(dac$stage, dac$Year)
+table(dac$No.panicles, dac$Year)
+
+summary_df <- dac %>%
+  group_by(Plot, Year) %>%
+  summarise(
+    panciles_t = sum(No.panicles, na.rm = TRUE),
+    seedlings_t = sum(stage=="seedling", na.rm = TRUE),
+    .groups = "drop"
+  )
+summary_df
+t_t1_table <- summary_df %>%
+  mutate(seedlings_t1 = lead(seedlings_t)) %>% 
+  mutate(seedlings_per_panicle = ifelse(
+    panciles_t == 0 | is.na(panciles_t) | is.na(seedlings_t1),
+    NA,
+    seedlings_t1 / panciles_t
+  ))
+mean_seedlings_per_panicle <- mean(
+  t_t1_table$seedlings_per_panicle,
+  na.rm = TRUE
+)
+sd_seedlings_per_panicle <- sd(
+  t_t1_table$seedlings_per_panicle,
+  na.rm = TRUE
+)
+median_seedlings_per_panicle <- median(
+  t_t1_table$seedlings_per_panicle,
+  na.rm = TRUE
+)
+#0.096
+#0.095 after 2026
+```
+
+```{r growth prequel}
+base <- lmer(log.no.stemsT1 ~ log.no.stems*Year + (1|Plot), data = dac, REML = F)
+drop1(base,test="Chisq")
+base2 <- lmer(log.no.stemsT1 ~ log.no.stems+Year + (1|Plot), data = dac, REML = F)
+base3 <- lmer(log.no.stemsT1 ~ log.no.stems+ (1|Plot), data = dac, REML = F)
+a2 <- anova(base3, base2, test="LRT") #yes year is significant
+best.growth <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Year) + (1|Plot), data = dac, REML = F)
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best.growth)$Year),
+  var = "year") %>% 
+  mutate(year = as.numeric(year))
+
+# 
+grow.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+names(grow.corr)[names(grow.corr) == "(Intercept)"] <- "int"
+cor_matrix <- cor(grow.corr)
+correlations <- cor_matrix[,"int"]
+
+correlations <- correlations[names(correlations) != "int"]
+correlations_sorted <- sort(correlations, decreasing = TRUE)
+###
+vars <- names(grow.corr)[names(grow.corr) != "int"]
+
+# Compute correlations and p-values
+cor_results <- lapply(vars, function(v) {
+  test <- cor.test(grow.corr$int, grow.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results_growth <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+cor_results_growth <- cor_results_growth[order(-abs(cor_results_growth$correlation)), ]
+#summer tot.precip only with with correlation
+```
+
+```{r growth model selection}
+gm.base.size <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.base.trt <- lmer(log.no.stemsT1 ~ log.no.stems+ trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.base.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+
+#grow season ave temp
+gm.sp.min.temp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.sp.min.temp.trt <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.sp.min.temp.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.gs.av.temp.trt.int3 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.gs.av.temp.int <- lmer(log.no.stemsT1 ~ log.no.stems*trt +spring.mean.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.gs.av.temp.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.min.temp + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+
+
+#summer av temp
+gm.su.sp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.int <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.temp + summer.tot.precip+  (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip +spring.mean.temp+  (1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.temp + trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp*trt +summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int4 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + spring.mean.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip*trt +spring.mean.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int6 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip*trt + spring.mean.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+
+gm.su.sp.p <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.int <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.temp + summer.tot.precip+  (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip +spring.mean.temp+  (1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.p <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + trt + prev_summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.temp + trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.int.p <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp*trt +prev_summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int4 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + spring.mean.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.int2.p <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt +spring.mean.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int6 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip*trt + spring.mean.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+
+
+#summer precip
+gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.p.int <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.p.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+
+#prev_summer.precip
+gm.summer.p <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.p.int <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.p.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.p.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+
+#summer max temp
+gm.summer.t <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.p.int <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.t.trt <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.p.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.t.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = dac, REML = F)
+gm.summer.t.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+
+gm.su.sp.t <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.int <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.temp + summer.tot.precip+  (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip +spring.mean.temp+  (1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.t <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp + trt + summer.mean.max.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int1 <- lmer(log.no.stemsT1 ~ log.no.stems*spring.mean.temp + trt + summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.int.t <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.temp*trt +summer.mean.max.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int4 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip + trt + spring.mean.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+gm.su.sp.trt.int2.t <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp*trt +spring.mean.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
+#gm.summer.av.temp.trt.int6 <- lmer(log.no.stemsT1 ~ log.no.stems*summer.tot.precip*trt + spring.mean.temp+(1|Plot) + (1|Year), data = dac, REML = F)
+
+
+################################################################################
+###
+growth <- mget(ls(pattern = "^gm")) #make a list of all of those models that start with gm (^ means start with)
+growth_AICc<-aictab(cand.set = growth, modnames = NULL,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+#rm(list = ls()[grepl("gm", ls())]) #removes everything with gm
+
+AIC.save <- growth_AICc %>% 
+  arrange(AICc)
+AIC.save$vitalrate <- "growth"
+
+summary(gm.su.sp)
+```
+
+```{r growth figures}
+pred.dat.g <- expand.grid(log.no.stems = seq(min(dac$log.no.stems, na.rm = TRUE), max(dac$log.no.stems, na.rm = TRUE), by = .1), summer.tot.precip = c(-1, 0, 1), spring.mean.temp = c(-1,0, 1))
+pred.dat.output.g <- cbind(pred.dat.g, as.data.frame(predict(gm.su.sp, newdata = pred.dat.g, type="response", re.form=~0, pred.var=TRUE)))
+colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.no.stemsT1"  # Renaming the last column
+
+# (growth <- dac %>%
+#   ggplot(aes(x = log.no.stems, y = log.no.stemsT1))+
+#   geom_point(alpha = 0.5, shape = 1)+
+#   geom_line(data = subset(pred.dat.output.g), aes(color = factor(summer.tot.precip)),linewidth = 1.5) +
+#   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = "bottom")+
+#   scale_color_manual(name = "Summer total precip.", values = c("darkorange",  "deepskyblue"), labels = c("Dry", "Wet")) +
+#   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .2)+
+#   scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5))+
+#   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5))+
+#   labs( x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
+
+(growth.sp <- dac %>%
+  ggplot(aes(x = log.no.stems, y = log.no.stemsT1))+
+  geom_point(data = dac ,alpha = 0.5, shape = 1)+
+  geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 0 & spring.mean.temp != 0), aes(color = factor(spring.mean.temp)),linewidth = 1.5) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA))+  geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
+  scale_color_manual(name = "Spring temp, t", values = c("#00a3a3","#d72a96"), labels = c("Cool", "Warm")) +
+  scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
+
+(growth.su <- dac %>%
+  ggplot(aes(x = log.no.stems, y = log.no.stemsT1))+
+  geom_point(data = dac ,alpha = 0.5, shape = 1)+
+  geom_line(data = subset(pred.dat.output.g, spring.mean.temp == 0 & summer.tot.precip !=0), aes(color = factor(summer.tot.precip)),linewidth = 1.5) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA))+  geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
+  scale_color_manual(name = "Summer precip, t", values = c("darkorange","deepskyblue"), labels = c("Dry", "Wet")) +
+  scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
+
+(gr.fig <- growth.sp+growth.su +  plot_annotation(tag_levels = 'i') + plot_layout(axes = "collect")
+)
+ggsave(here("Figures", "Dactylis", "growth.png"), plot = gr.fig, width = 10, height =6)
+
+
+```
+
+
+```{r pflower prequel}
+#base.p1 <- glmer(pflowerT ~ log.no.stems*as.numeric(Year) + (1|Plot) , data = dac, family = "binomial")
+base.p <- glmer(pflowerT ~ log.no.stems*Year + (1|Plot) , data = dac, family = "binomial")
+#t <- AIC(base.p, base.p1)
+
+drop1(base.p,test="Chisq") #nope interaction not significant
+base.p2 <- glmer(pflowerT ~ log.no.stems+Year + (1|Plot) , data = dac, family = "binomial")
+base.p3 <- glmer(pflowerT ~ log.no.stems+ (1|Plot), data = dac, family = "binomial")
+a2 <- anova(base.p3, base.p2, test="LRT") #yes year is significant
+best.pflower <- glmer(pflowerT ~ log.no.stems + (1|Year) + (1|Plot), data = dac, family = "binomial")
+
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best.pflower)$Year),
+  var = "year") %>% 
+  mutate(year = as.numeric(year))%>% 
+  rename(int = `(Intercept)`)
+
+pflower.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+
+# get correlations and p-values
+cor_results <- lapply(names(pflower.corr), function(v) {
+  test <- cor.test(pflower.corr$int, pflower.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results_pflower <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+cor_results_pflower <- cor_results_pflower[order(-abs(cor_results_pflower$correlation)), ]
+
+```
+
+```{r pflower model selection}
+fm.base.size <- glmer(pflowerT ~ log.no.stems + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.base.trt <- glmer(pflowerT ~ log.no.stems+ trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.base.trt.int <- glmer(pflowerT ~ log.no.stems*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+#grow season ave temp
+fm.prev_spring.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_spring.mean.temp.trt <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_spring.mean.temptrt.int2 <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_spring.mean.temptrt.int3 <- glmer(pflowerT ~ log.no.stems*trt + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+#prev_winter.mean.min.temp
+fm.prev_winter.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.min.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_winter.mean.temp.trt <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.min.temp + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_winter.mean.temp.trt.int2 <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.min.temp*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_winter.mean.temp.trt.int2 <- glmer(pflowerT ~ log.no.stems*trt + prev_winter.mean.min.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+# 
+# #both prev winter and spring
+fm.wt.sp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + prev_winter.mean.min.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + trt + prev_winter.mean.min.temp+(1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp*trt +prev_winter.mean.min.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int2 <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.min.temp*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+# #both prev winter p and spring t
+fm.wt.sp.tp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.tp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + trt + prev_winter.tot.precip+(1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int.tp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp*trt +prev_winter.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int2.tp <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+#spring.tot.precip
+fm.spp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.spp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.spp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.spp <- glmer(pflowerT ~ log.no.stems*trt + spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+#prev_winter.tot.precip
+fm.prev_winter.p <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_winter.p.trt <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_winter.p.trt.int2 <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.prev_winter.p.trt.int2 <- glmer(pflowerT ~ log.no.stems*trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
+# 
+# #both prev winter and spring precip
+fm.wt.sp.p <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.p <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + trt + prev_winter.tot.precip+(1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int.p <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt +prev_winter.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int2.p <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+# #both prev winter t and spring precip
+fm.wt.sp.p.tp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.mean.min.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.p.tp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + trt + prev_winter.mean.min.temp+(1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int.p.tp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt +prev_winter.mean.min.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+fm.wt.sp.trt.int2.p.tp <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.min.temp*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+
+################################################################################
+###
+pflower <- mget(ls(pattern = "^fm")) #make a list of all of those models that start with gm (^ means start with)
+pflower_AICc<-aictab(cand.set = pflower, modnames = NULL,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+#rm(list = ls()[grepl("fm", ls())]) #removes everything with gm
+
+# saving AIC table:
+## names of models:
+# names <- as.data.frame(names(growth))
+# growth_AICc <- growth_AICc %>% 
+#   arrange(Modnames)
+# 
+# names=data.frame(model.names = c(1:105))
+# growth_AICc$model.names[[i]]
+# 
+# for (i in 1:105) {
+#     names$formulas[[i]]<- formula(growth[[i]])
+#     names$formulas <- names$formulas
+# }
+
+AIC.save.p <- pflower_AICc %>% 
+  arrange(AICc)
+AIC.save.p$vitalrate <- "pflower"
+AIC.save <- 
+  bind_rows(AIC.save, AIC.save.p)
+
+summary(fm.prev_spring.mean.temp)
+
+cor.test(climate$prev_spring.mean.temp,
+         climate$prev_winter.mean.min.temp)
+
+cor.test(climate$prev_winter.tot.precip,
+         climate$prev_winter.mean.min.temp)
+cor.test(climate$prev_winter.tot.precip,
+         climate$prev_spring.mean.temp)
+cor.test(climate$prev_winter.tot.precip,
+         climate$spring.tot.precip)
+cor.test(climate$prev_spring.mean.temp,
+         climate$spring.tot.precip)
+
+```
+
+```{r pflower figure}
+pred.dat.p <- expand.grid(log.no.stems = seq(min(dac$log.no.stems, na.rm = TRUE), max(dac$log.no.stems, na.rm = TRUE), by = .1), prev_spring.mean.temp = c(-1, 1))
+pred.dat.output.p <- cbind(pred.dat.p, as.data.frame(predict(fm.prev_spring.mean.temp, newdata = pred.dat.p, type="response", re.form=~0, pred.var=TRUE)))
+colnames(pred.dat.output.p)[ncol(pred.dat.output.p)] <- "pflowerT"  # Renaming the last column
+
+# pred.dat.p <- expand.grid(log.no.stems = seq(min(dac$log.no.stems, na.rm = TRUE), max(dac$log.no.stems, na.rm = TRUE), by = .1), prev_spring.mean.min.temp = c(-1, 0, 1), prev_winter.mean.temp = c(-1, 0, 1), trt = c("irrigated", "control", "drought"))
+# pred.dat.output.p <- cbind(pred.dat.p, as.data.frame(predict(fm.wt.sp.trt.int, newdata = pred.dat.p, type="response", re.form=~0, pred.var=TRUE)))
+# colnames(pred.dat.output.p)[ncol(pred.dat.output.p)] <- "pflowerT"  # Renaming the last column
+# # 
+(flower <- dac %>%
+  ggplot(aes(x = log.no.stems, y = as.numeric(pflowerT)-1))+
+  geom_jitter(data = dac ,alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+  geom_line(data = pred.dat.output.p, aes(y = pflowerT, color = as.character(prev_spring.mean.temp)),linewidth = 1.5) +
+  scale_color_manual(name = "Spring temp, t-1", values = c("#00a3a3","#d72a96"), labels = c("Cool", "Warm")) +
+  #scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  #scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "Probability of Flowering in t")+
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.85, .25),   legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA)))
+
+ggsave(here("Figures", "Dactylis", "flower.png"), plot = flower, width = 6, height =6)
+
+
+# (flower.wt <- dac %>% 
+#   ggplot(aes(x = log.no.stems, y = as.numeric(pflowerT)-1))+
+#   geom_jitter(data = dac ,alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+#   geom_line(data = subset(pred.dat.output.p, prev_spring.mean.min.temp == 0 & prev_winter.mean.temp != 0), aes(y = pflowerT, color = factor(prev_winter.mean.temp)),linewidth = 1.5) +
+#   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = "bottom")+
+#   scale_color_manual(name = "Spring min. temp. in t-1", values = c("#00a3a3","#d72a96"), labels = c("Cool", "Warm")) +
+#   #scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+#   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+#   facet_wrap(~trt)+
+#   labs(x = "log(Number of Stems) in t", y = "Probability of Flowering in t"))
+# 
+# (flower.sp <- dac %>% 
+#   ggplot(aes(x = log.no.stems, y = as.numeric(pflowerT)-1))+
+#   geom_jitter(data = dac ,alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+#   geom_line(data = subset(pred.dat.output.p, prev_winter.mean.temp == 0 & prev_spring.mean.min.temp !=0), aes(y = pflowerT, color = factor(prev_spring.mean.min.temp)),linewidth = 1.5) +
+#   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = "bottom")+
+#   scale_color_manual(name = "Winter mean temp. in t-1", values = c("cyan4","maroon"), labels = c("Cool", "Warm")) +
+#   facet_wrap(~trt)+
+#   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+#   labs(x = "log(Number of Stems) in t", y = "Probability of Flowering in t"))
+# 
+# (flower.fig <- flower.wt/flower.sp +  plot_annotation(tag_levels = 'i') 
+# )
+# ggsave(here("Figures", "Dactylis", "flower.png"), plot = flower.fig, width = 6, height =8)
+
+
+```
+
+```{r survival prequel}
+# dac.survival <- dac %>% 
+#   filter(Year!= "2024",
+#          Year!= "2025")
+table(dac.surv$survT1, dac.surv$Year)
+base.s <- glmer(survT1 ~ log.no.stems*Year + (1|Plot) , data = dac.surv, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
+drop1(base.s,test="Chisq") #yes, keep size*climate interactions
+#base.p2 <- glmer(survT1 ~ log.no.stems+Year + (1|Plot) , data = dac, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
+#base.p3 <- glmer(survT1 ~ log.no.stems+ (1|Plot), data = dac, family = "binomial")
+#a2 <- anova(base.p3, base.p2, test="LRT") #yes year is significant
+best.s <- glmer(survT1 ~ log.no.stems + (1|Year) + (1|Plot) , data = dac.surv, family = "binomial")
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best.s)$Year),
+  var = "Year") %>% 
+  mutate(year = as.numeric(Year))%>% 
+  rename(int = `(Intercept)`)
+
+surv.corr <- left_join(re_year, climate) %>% 
+  select(-Year)
+
+# get correlations and p-values
+cor_results <- lapply(names(surv.corr), function(v) {
+  test <- cor.test(surv.corr$int, surv.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value)
+})
+# Combine into one data frame
+cor_results_surv <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+cor_results_surv <- cor_results_surv[order(-abs(cor_results_surv$correlation)), ]
+cor_results_surv
+#prev_spring.mean.temp 	
+#spring.tot.precip	
+#winter.mean.min.temp	
+#prev_fall.tot.precip	
+
+cor.test(climate$prev_fall.tot.precip,
+         climate$prev_spring.mean.temp)
+
+cor.test(climate$prev_winter.tot.precip,
+         climate$prev_winter.mean.min.temp)
+cor.test(climate$prev_winter.tot.precip,
+         climate$prev_spring.mean.temp)
+cor.test(climate$prev_spring.mean.temp,
+         climate$spring.tot.precip)
+cor.test(climate$prev_spring.mean.temp,
+         climate$spring.tot.precip)
+
+
+```
+
+```{r survival model selection}
+sm.base.size <- glmer(survT1 ~ log.no.stems + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.base.trt <- glmer(survT1 ~ log.no.stems+ trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.base.trt.int <- glmer(survT1 ~ log.no.stems*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#grow season ave temp
+sm.prev_spring.mean.temp <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.mean.temp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.mean.temp.trt <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.mean.temptrt.int <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.mean.temptrt.int2 <- glmer(survT1 ~ log.no.stems*trt + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#prev.winter
+sm.winter.mean.min.temp <- glmer(survT1 ~ log.no.stems + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.winter.mean.min.temp.int <- glmer(survT1 ~ log.no.stems*winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.winter.mean.min.temp.trt <- glmer(survT1 ~ log.no.stems + winter.mean.min.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.winter.mean.min.temp.trt.int <- glmer(survT1 ~ log.no.stems + winter.mean.min.temp*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.winter.mean.min.temp.trt.int2 <- glmer(survT1 ~ log.no.stems*trt + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#both prev winter and spring
+sm.wt.sp <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.int2 <- glmer(survT1 ~ log.no.stems*winter.mean.min.temp + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + trt + winter.mean.min.temp+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt.int <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp*trt +winter.mean.min.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt.int2 <- glmer(survT1 ~ log.no.stems + winter.mean.min.temp*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt.int3 <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp+trt+winter.mean.min.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt.int4 <- glmer(survT1 ~ log.no.stems*winter.mean.min.temp + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt.int5 <- glmer(survT1 ~ log.no.stems+winter.mean.min.temp + prev_spring.mean.temp*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.wt.sp.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+winter.mean.min.temp + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#both  spring p and t
+sm.sppt <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppt.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppt.int2 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppttrt <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + trt + prev_fall.tot.precip+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppttrt.int <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp*trt +prev_fall.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppttrt.int2 <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppttrt.int3 <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp+trt+prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppttrt.int4 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppt.trt.int5 <- glmer(survT1 ~ log.no.stems+prev_fall.tot.precip + prev_spring.mean.temp*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sppt.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+prev_fall.tot.precip + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#both  spring p and f
+sm.sfp <- glmer(survT1 ~ log.no.stems + spring.tot.precip + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfp.int <- glmer(survT1 ~ log.no.stems*spring.tot.precip + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfp.int2 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfptrt <- glmer(survT1 ~ log.no.stems + spring.tot.precip + trt + prev_fall.tot.precip+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfptrt.int <- glmer(survT1 ~ log.no.stems + spring.tot.precip*trt +prev_fall.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfptrt.int2 <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfptrt.int3 <- glmer(survT1 ~ log.no.stems*spring.tot.precip+trt+prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfptrt.int4 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + spring.tot.precip + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfp.trt.int5 <- glmer(survT1 ~ log.no.stems+prev_fall.tot.precip + spring.tot.precip*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.sfp.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+prev_fall.tot.precip + spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+
+#spring tot precip
+sm.prev_spring.p <- glmer(survT1 ~ log.no.stems + spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.p.int <- glmer(survT1 ~ log.no.stems*spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.p.trt <- glmer(survT1 ~ log.no.stems + spring.tot.precip + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.ptrt.int <- glmer(survT1 ~ log.no.stems + spring.tot.precip*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.prev_spring.ptrt.int2 <- glmer(survT1 ~ log.no.stems*trt + spring.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+#fall
+sm.fall.p <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.fall.p.int <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.fall.p.trt <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.fall.p.trt.int <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+sm.fall.p.trt.int2 <- glmer(survT1 ~ log.no.stems*trt + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+
+################################################################################
+###
+surv <- mget(ls(pattern = "^sm")) #make a list of all of those models that start with gm (^ means start with)
+surv_AICc<-aictab(cand.set = surv, modnames = NULL,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+#rm(list = ls()[grepl("gm", ls())]) #removes everything with gm
+
+# saving AIC table:
+## names of models:
+# names <- as.data.frame(names(growth))
+# growth_AICc <- growth_AICc %>% 
+#   arrange(Modnames)
+# 
+# names=data.frame(model.names = c(1:105))
+# growth_AICc$model.names[[i]]
+# 
+# for (i in 1:105) {
+#     names$formulas[[i]]<- formula(growth[[i]])
+#     names$formulas <- names$formulas
+# }
+
+AIC.save.s <- surv_AICc %>% 
+  arrange(AICc) #%>% 
+  #slice_head(n =10)
+AIC.save.s$vitalrate <- "survival"
+AIC.save <- 
+  bind_rows(AIC.save, AIC.save.s)
+
+summary(sm.wt.sp.int)
+```
+
+```{r surv figure}
+pred.dat.s <- expand.grid(log.no.stems = seq(min(dac$log.no.stems, na.rm = TRUE), max(dac$log.no.stems, na.rm = TRUE), by = .1), prev_spring.mean.temp = c(-1, 0, 1), winter.mean.min.temp = c(-1, 0, 1))
+pred.dat.output.s <- cbind(pred.dat.s, as.data.frame(predict(sm.wt.sp.int, newdata = pred.dat.s, type="response", re.form=~0, pred.var=TRUE)))
+colnames(pred.dat.output.s)[ncol(pred.dat.output.s)] <- "survT1"  # Renaming the last column
+
+(s.sp <- 
+  dac.surv %>% 
+  ggplot(aes(x = log.no.stems, y = as.numeric(survT1)-1))+
+  geom_jitter(alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+  geom_line(data = subset(pred.dat.output.s, winter.mean.min.temp == 0 & prev_spring.mean.temp != 0), aes(y = survT1, color = factor(prev_spring.mean.temp)),linewidth = 1.5) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.85, .25),   legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA))+  
+    scale_color_manual(name = "Spring temp, t-1", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
+  scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "Survival in t + 1"))
+
+(s.su <- dac.surv %>% 
+  ggplot(aes(x = log.no.stems, y = as.numeric(survT1)-1))+
+  geom_jitter(alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+  geom_line(data = subset(pred.dat.output.s, prev_spring.mean.temp == 0 & winter.mean.min.temp !=0), aes(y = survT1, color = factor(winter.mean.min.temp)),linewidth = 1.5) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.85, .25),   legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA))+  
+    scale_color_manual(name = "Winter temp, t", values = c("#90d4cc", "#bd3027"), labels = c("cool", "warm")) +
+  scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "Survival in t + 1"))
+
+(s.fig <- s.sp+s.su +  plot_annotation(tag_levels = 'i') + plot_layout(axes = "collect")
+)
+ggsave(here("Figures", "Dactylis", "survival.png"), plot = s.fig, width = 10, height =6)
+```
+
+```{r panicles prequel}
+poisson.base.size <- glmer(No.panicles ~ log.no.stems + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+base.pan <- glmer(No.panicles ~ log.no.stems*Year + (1|Plot) , data = subset(dac, pflowerT == "1"), family = "poisson")
+drop1(base.pan,test="Chisq") #yes, keep size*climate interactions
+# base.p2 <- glmer(survT1 ~ log.no.stems+as.numeric(Year) + (1|Plot) , data = dac, family = "binomial")
+# base.p3 <- glmer(survT1 ~ log.no.stems+ (1|Plot), data = dac, family = "binomial")
+# a2 <- anova(base.p3, base.p2, test="LRT") #yes year is significant
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(poisson.base.size)$Year),
+  var = "year") %>% 
+  mutate(year = as.numeric(year)) %>% 
+    rename(int = `(Intercept)`)
+
+pan.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+
+# get correlations and p-values
+cor_results <- lapply(names(pan.corr), function(v) {
+  test <- cor.test(pan.corr$int, pan.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results_pan <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+cor_results_pan <- cor_results_pan[order(-abs(cor_results_pan$correlation)), ]
+
+#prev_spring.mean.temp
+#prev_winter.tot.precip
+
+
+```
+
+
+```{r panicles model selection}
+poisson.base.size <- glmer(No.panicles ~ log.no.stems + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.base.trt <- glmer(No.panicles ~ log.no.stems+ trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.base.trt.int <- glmer(No.panicles ~ log.no.stems*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+##prev_spring.mean.temp
+poisson.prev_spring.mean.temp <- glmer(No.panicles ~ log.no.stems + prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_spring.mean.temp.int <- glmer(No.panicles ~ log.no.stems*prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_spring.mean.temp.trt <- glmer(No.panicles ~ log.no.stems + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_spring.mean.temp.trt.int1 <- glmer(No.panicles ~ log.no.stems*prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_spring.mean.temp.trt.int2 <- glmer(No.panicles ~ log.no.stems+ prev_spring.mean.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_spring.mean.temp.trt.int3 <- glmer(No.panicles ~ log.no.stems*trt + prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+##prev_winter.tot.precip
+poisson.prev_winter.tot.precip <- glmer(No.panicles ~ log.no.stems+ prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_winter.tot.precip.int <- glmer(No.panicles ~ log.no.stems *prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_winter.tot.precip.trt <- glmer(No.panicles ~ log.no.stems+ prev_winter.tot.precip + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_winter.tot.precip.trt.int1 <- glmer(No.panicles ~ log.no.stems *prev_winter.tot.precip + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_winter.tot.precip.trt.int2 <- glmer(No.panicles ~ log.no.stems + prev_winter.tot.precip*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.prev_winter.tot.precip.trt.int3 <- glmer(No.panicles ~ log.no.stems*trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+##winter and spring
+# poisson.ws <- glmer(No.panicles ~ log.no.stems+ prev_winter.tot.precip + prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.ws.int <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.ws.int2 <- glmer(No.panicles ~ log.no.stems*prev_spring.mean.temp + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.ws.trt <- glmer(No.panicles ~ log.no.stems+ prev_winter.tot.precip +prev_spring.mean.temp+ trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# # poisson.ws.trt.int1 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.ws.trt.int2 <- glmer(No.panicles ~ log.no.stems + prev_winter.tot.precip*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.ws.trt.int3 <- glmer(No.panicles ~ log.no.stems*trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+#winter.mean.min.temp
+# poisson.winter.mean.min.temp <- glmer(No.panicles ~ log.no.stems + winter.mean.min.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.winter.mean.min.temp.int <- glmer(No.panicles ~ log.no.stems*winter.mean.min.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.winter.mean.min.temp.trt <- glmer(No.panicles ~ log.no.stems + winter.mean.min.temp + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.winter.mean.min.temp.trt.int1 <- glmer(No.panicles ~ log.no.stems*winter.mean.min.temp + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# poisson.winter.mean.min.temp.trt.int2 <- glmer(No.panicles ~ log.no.stems + winter.mean.min.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+# 
+# #both
+poisson.sp.wt.temp <- glmer(No.panicles ~ log.no.stems  + prev_spring.mean.temp + prev_winter.tot.precip+(1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.int1 <- glmer(No.panicles ~ log.no.stems *prev_spring.mean.temp + prev_winter.tot.precip+(1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.trt <- glmer(No.panicles ~ log.no.stems  + prev_spring.mean.temp + trt +prev_winter.tot.precip+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.trt.int1 <- glmer(No.panicles ~ log.no.stems *prev_spring.mean.temp + trt + prev_winter.tot.precip+(1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.trt.int2 <- glmer(No.panicles ~ log.no.stems  + prev_spring.mean.temp*trt + prev_winter.tot.precip+(1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.int2 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.trt2 <- glmer(No.panicles ~ log.no.stems + prev_winter.tot.precip + trt + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.trt.int3 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + trt + prev_spring.mean.temp+(1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+poisson.sp.wt.trt.int4 <- glmer(No.panicles ~ log.no.stems + prev_winter.tot.precip*trt + prev_spring.mean.temp+(1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
+
+################################################################################
+###
+panicles <- mget(ls(pattern = "^poisson")) #make a list of all of those models that start with gm (^ means start with)
+panicles_AICc<-aictab(cand.set = panicles, modnames = NULL,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+#rm(list = ls()[grepl("poisson", ls())]) #removes everything with gm
+
+# saving AIC table:
+## names of models:
+# names <- as.data.frame(names(growth))
+# growth_AICc <- growth_AICc %>% 
+#   arrange(Modnames)
+# 
+# names=data.frame(model.names = c(1:105))
+# growth_AICc$model.names[[i]]
+# 
+# for (i in 1:105) {
+#     names$formulas[[i]]<- formula(growth[[i]])
+#     names$formulas <- names$formulas
+# }
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model, type = "pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq / rdf
+  pval <- pchisq(Pearson.chisq, df = rdf, lower.tail = FALSE)
+
+  c(
+    chisq = Pearson.chisq,
+    ratio = prat,
+    rdf = rdf,
+    p = pval
+  )
+}
+overdisp_fun(poisson.sp.wt.int2)
+
+AIC.save.pan <- panicles_AICc %>% 
+  arrange(AICc) 
+AIC.save.pan$vitalrate <- "no.panicles"
+AIC.save <- 
+  bind_rows(AIC.save, AIC.save.pan)
+summary(poisson.sp.wt.int2)
+```
+
+```{r number panicles figure}
+pred.dat.pan <- expand.grid(log.no.stems = seq(min(dac$log.no.stems, na.rm = TRUE), max(dac$log.no.stems, na.rm = TRUE), by = .1), prev_spring.mean.temp = c(-1, 0, 1), prev_winter.tot.precip = c(-1, 0, 1))
+pred.dat.output.pan <- cbind(pred.dat.pan, as.data.frame(predict(poisson.sp.wt.int2, newdata = pred.dat.pan, type="response", re.form=~0, pred.var=TRUE)))
+colnames(pred.dat.output.pan)[ncol(pred.dat.output.pan)] <- "No.panicles"  # Renaming the last column
+
+# (flowering <- dac %>% 
+#   ggplot(aes(x = log.no.stems, y = pflowerT))+
+#   geom_point(aes(data = dac ,alpha = 0.5, size = summer.tot.precip), shape = 1)+
+#   #geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 0), aes(x = log.no.stems, y = pflowerT), color = "grey", size = 1.5)+ 
+#   geom_line(data = subset(pred.dat.output.g, summer.tot.precip == 1), aes(x = log.no.stems, y = pflowerT), color = "lightblue", size = 1.5)+ 
+#   geom_line(data = subset(pred.dat.output.g, summer.tot.precip == -1), aes(x = log.no.stems, y = pflowerT), color = "orange", size = 1.5)+ 
+#   theme(axis.line = element_line(colour = 'black', linewidth = 1.1))+
+#   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .2)+
+#   scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5))+
+#   scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5))+
+#   labs( x = "log(Number of Stems) in t", y = "log(Number of Stems) in t + 1"))
+
+(pan.sp <- dac %>% 
+    filter(pflowerT == "1") %>% 
+  ggplot(aes(x = log.no.stems, y = No.panicles))+
+  geom_jitter(alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+  geom_line(data = subset(pred.dat.output.pan, prev_winter.tot.precip == 0 & prev_spring.mean.temp != 0), aes(y = No.panicles, color = factor(prev_spring.mean.temp)),linewidth = 1.5) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, 0.8),   legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA))+   scale_color_manual(name = "Spring temp, t-1", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
+  #scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  #scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "Number of panicles in t"))
+
+(pan.wp <- dac %>% 
+    filter(pflowerT == "1") %>% 
+  ggplot(aes(x = log.no.stems, y = No.panicles))+
+  geom_jitter(alpha = 0.25, shape = 1, height = .05, width = 0.05)+
+  geom_line(data = subset(pred.dat.output.pan, prev_spring.mean.temp == 0 &  prev_winter.tot.precip!= 0), aes(y = No.panicles, color = factor(prev_winter.tot.precip)), linewidth = 1.5) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, 0.8),   legend.background = element_rect(fill = NA, colour = NA),
+  legend.key = element_rect(fill = NA, colour = NA))+   
+  scale_color_manual(name = "Winter precip, t-1", values = c("#a30031", "#0c74ce"), labels = c("dry", "wet")) +
+  #scale_y_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  #scale_x_continuous(expand = c(0, 0), limits = c(-.25, 5.25))+
+  labs(x = "log(Number of Stems) in t", y = "Number of panicles in t"))
+
+
+(pan.fig <- pan.sp+pan.wp +  plot_annotation(tag_levels = 'i') + plot_layout(axes = "collect")
+)
+ggsave(here("Figures", "Dactylis", "pan.png"), plot = pan.fig, width = 10, height =6)
+
+```
+Spring:
+"#00a3a3","#d72a96"
+winter:
+"#0c74ce","#a30031"
+summer: "#89d3d6","#f69338"
+summer precip:
+"darkorange","deepskyblue"
+
+```{r}
+(all <- (gr.fig+ s.fig)/ (flower + pan.fig) +plot_layout( axis_titles= 'collect')+
+    plot_annotation(tag_levels = "A", tag_suffix = ")")&
+  theme(
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10), 
+    legend.background = element_rect(fill = NA, colour = NA),
+  legend.key = element_rect(fill = NA, colour = NA)
+  )
+)
+
+(#growth.sp+growth.su+pan.sp+pan.wp + s.sp+s.su +flower
+all <-
+  (growth.sp + growth.su + pan.sp + pan.wp) /
+  (s.sp + s.su + flower + plot_spacer()) +
+  plot_layout(axis_titles = "collect") +
+  plot_annotation(tag_levels = "A", tag_suffix = ")") &
+  theme(
+    #legend.position = "bottom",
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10),
+    legend.background = element_rect(fill = NA, colour = NA),
+    legend.key = element_rect(fill = NA, colour = NA)
+  ))
+ggsave(here("Figures", "Dactylis", "all.png"), plot = all, width = 15, height =20)
+
+
+```
+
