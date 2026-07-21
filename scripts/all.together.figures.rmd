@@ -1,0 +1,217 @@
+---
+title: "all.together.figure"
+output: html_document
+date: "2026-07-21"
+---
+
+```{r}
+library(tidyverse)
+library(here)
+theme_set(theme_classic(base_size = 18))
+
+
+files <- list.files(
+  here("clean_data", "stoch_ipm"),
+  pattern = "\\.csv$",
+  full.names = TRUE
+)
+
+all_data <- purrr::map_dfr(files, function(f) {
+  dat <- read.csv(f)
+
+  if ("lower_CI" %in% names(dat)) {
+    names(dat)[names(dat) == "lower_CI"] <- "lower"
+  }
+
+  if ("upper_CI" %in% names(dat)) {
+    names(dat)[names(dat) == "upper_CI"] <- "upper"
+  }
+
+  dat$species <- sub("\\..*$", "", basename(f))
+
+  dat
+})
+
+all_data <- all_data |> 
+   mutate(
+    stochastic.lambda = coalesce(
+      stochastic_lambda,
+      exp(log.lambda)
+    ),
+    lower = if_else(is.na(stochastic_lambda), exp(lower), lower),
+    upper = if_else(is.na(stochastic_lambda), exp(upper), upper),
+    #scenario = replace_na(scenario, "future.temp"),
+    life.history = replace_na(life.history, "perennial"),
+     origin = case_when(
+      species == "dactylis" ~ "invasive",
+      is.na(origin) ~ "native",
+      TRUE ~ origin)) |>   
+  select(-c(Seq, summer.mean.max.temp, fall.mean.max.temp, winter.mean.max.temp, log.total1, log.lambda, stochastic_lambda)) |> 
+  filter(scenario != "future")
+
+
+
+```
+
+```{r}
+trt_effects <- all_data %>%
+  group_by(species, scenario) %>%
+  mutate(
+    control.lambda = stochastic.lambda[trt == "control"],
+    control.lower = lower[trt == "control"],
+    control.upper = upper[trt == "control"],
+    
+    trt_difference = stochastic.lambda - control.lambda,
+    lower_difference = lower - control.upper,
+    upper_difference = upper - control.lower
+  ) %>%
+  ungroup()
+
+
+ggplot(trt_effects, aes(x = scenario, 
+                        y = trt_difference, 
+                        color = trt)) +
+  geom_point(size = 3) +
+  facet_wrap(~ species) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "Climate scenario",
+    y = "Difference in stochastic lambda from control",
+    color = "Treatment"
+  ) +
+  theme_classic()
+
+pd <- position_dodge(width = 0.4)
+
+(treatments <- trt_effects |> 
+  filter(species %in% c("lomatium", "primula"),
+         trt != "control") |>   
+  ggplot(aes(x = scenario, 
+                        y = trt_difference, 
+                        color = trt)) +
+  geom_point(size = 3, position = pd) +
+  geom_errorbar(
+    aes(ymin = lower_difference, ymax = upper_difference),
+    width = 0.1,
+    position = pd
+  ) +
+  facet_wrap(~ species) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "",
+    y = "Difference in λs from control",
+    color = ""
+  ) +
+      scale_color_manual(values = c("#e54e21", "#3088a3")) +
+       theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1)))
+ggsave(plot = treatments, file = here("Figures", "all","treatments.png"), width = 7, height = 4, dpi = 300)
+
+
+```
+
+```{r}
+#all.data
+scenario_diff <- all_data %>%
+  group_by(species, trt) %>%
+  mutate(
+    current.lambda = stochastic.lambda[scenario == "current"],
+    current.lower = lower[scenario == "current"],
+    current.upper = upper[scenario == "current"]
+  ) %>%
+  filter(scenario != "current") %>%
+  mutate(
+    lambda_difference = stochastic.lambda - current.lambda,
+    lower_difference = lower - current.lower,
+    upper_difference = upper - current.upper
+  ) %>%
+  ungroup()
+
+(annuals <- scenario_diff %>%
+  filter(life.history == "annual") |> 
+  ggplot(aes(x = species, 
+             y = lambda_difference, 
+             color = scenario)) +
+  geom_point(
+    position = position_dodge(width = 0.3),
+    size = 3
+  ) +
+  geom_errorbar(
+    aes(ymin = lower_difference,
+        ymax = upper_difference),
+    position = position_dodge(width = 0.3),
+    width = 0.15
+  ) +
+  scale_color_manual(values = "firebrick")+
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "",
+    y = "Change in λ from current conditions",
+    color = ""
+  ) +
+           theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1)))
+ggsave(plot = annuals, file = here("Figures", "all","annuals.png"), width = 6, height = 4, dpi = 300)
+
+
+
+(perennials <- scenario_diff %>%
+  filter(life.history == "perennial") %>%
+  mutate(
+    trt = tidyr::replace_na(trt, "NA")
+  ) %>%
+  ggplot(aes(x = species,
+             y = lambda_difference,
+             color = scenario,
+             shape = trt,
+             group = trt)) +
+  geom_point(
+    position = position_dodge(width = 0.5),
+    size = 3
+  ) +
+  geom_errorbar(
+    aes(ymin = lower_difference,
+        ymax = upper_difference),
+    position = position_dodge(width = 0.5),
+    width = 0.15
+  ) +
+  #facet_wrap(~scenario) +
+  scale_color_manual(values = c(
+    "future.temp" = "firebrick",
+    "future.precip" = "royalblue"
+  )) +
+  scale_shape_manual(values = c(
+    "NA" = 16,
+    "control" = 17,
+    "irrigated" = 15,
+    "drought" = 18
+  )) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "",
+    y = "Change in λs from current climate",
+    color = "Scenario",
+    shape = "Treatment"
+  )+
+           theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1)))
+
+ggsave(plot = perennials, file = here("Figures", "all","perennials.png"), width = 6, height = 4, dpi = 300)
+
+
+(lh.together <- perennials+annuals+
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom"
+  ))
+
+ggsave(plot = lh.together, file = here("Figures", "all","lh.together.png"), width = 8, height = 5, dpi = 300)
+
+```
+

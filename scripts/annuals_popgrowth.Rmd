@@ -17,38 +17,55 @@ library(here) #for reading/saving files in a directory
 ```
 
 ```{r}
-climate <- read.csv(file = here("cleaned_data", "CGOP_climatevalues_scaled.csv"), header = T)
+climate <- read.csv(file = here("clean_data", "CGOP_climatevalues_scaled.csv"), header = T)
 climate <- climate %>% 
     mutate(year = as.character(year)) %>% 
   drop_na() %>% 
   filter(year>2015)
+future.climate <- read.csv(here("clean_data", "CGOP_future_climate_values.csv"))
+
 ```
 
 
 ```{r read in data}
-plec <- read.csv(file = here("cleaned_data", "Plectritis.density_scaled.csv"), header = T)
+plec <- read.csv(file = here("clean_data", "annuals", "Plectritis.density_scaled.csv"), header = T)
 plec <- plec %>% 
   mutate(year = as.character(year),
          plot = as.factor(plot)) %>% 
   filter(plot!="12", 
-         !(density == 0 & densityT1 == 0)) %>% 
+         !(density == 0 & densityT1 == 0),
+         year != "2026") %>% 
   group_by(plot) %>% 
   arrange(plot,year) %>%
   mutate(trt = factor(trt, levels = c("irrigated", "control", "drought")),
          log.lambda = log(lambda1),
          log.total1 = log(total1)) 
 
-bromus <- read.csv(file = here("cleaned_data", "Bromus.density_scaled.csv"), header = T)
+bromus <- read.csv(file = here("clean_data", "annuals","Bromus.density_scaled.csv"), header = T)
 bromus <- bromus %>% 
   mutate(year = as.character(year),
          plot = as.factor(plot)) %>% 
-  mutate(trt = fct_relevel(trt, "irrigated", "control", "drought"))
+  mutate(trt = fct_relevel(trt, "irrigated", "control", "drought")) |> 
+  filter( year != "2026") |> 
+  mutate(log.lambda = log(lambda1),
+         log.total1 = log(total1))
 
 plec <- left_join(plec, climate)
 bromus <- left_join(bromus, climate)
+
+claytonia <- read.csv(file = here("clean_data", "annuals","Claytonia.density_scaled.csv"), header = T)
+claytonia <- claytonia %>% 
+  mutate(year = as.character(year),
+         plot = as.factor(plot)) %>% 
+  mutate(trt = fct_relevel(trt, "irrigated", "control", "drought")) |> 
+  filter( year != "2026") |> 
+  mutate(log.lambda = log(lambda1),
+         log.total1 = log(total1))
+
+claytonia <- left_join(claytonia, climate)
 ```
 
-```{r appendix Figure S3  plots}
+```{r }
 (f1 <- plec %>% 
   ggplot(aes(x = year, y = log(total1), color = trt))+
   geom_line(aes(group = plot))+
@@ -109,11 +126,46 @@ bromus <- left_join(bromus, climate)
 (figs3 <- (f1+b1 +f2+ b2) + plot_annotation(tag_levels = 'A')+ plot_layout(widths = c(3.5, 1.75), guides = 'collect') & theme(legend.position = 'bottom'))
 
 
-ggsave(plot = figs3, file = here("figures", "FigureS3.png"), width = 8, height = 9, dpi = 300)
+#ggsave(plot = figs3, file = here("figures", "FigureS3.png"), width = 8, height = 9, dpi = 300)
 
 ```
 
+```{r correlate climate years with RE}
+base <- lmer(log.lambda ~ log.total1*year + (1|plot), data = plec, REML = F)
+drop1(base,test="Chisq")
+#base2 <- lmer(log.lambda ~ log.total1+year + (1|plot), data = plec, REML = F)
+#base3 <- lmer(log.lambda ~ log.total1+ (1|plot), data = plec, REML = F)
+#a2 <- anova(base3, base2, test="LRT") #yes year is significant
+best <- lmer(log.lambda ~ log.total1+ (1|year) + (1|plot), data = plec, REML = F)
 
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best)$year),
+  var = "year") %>% 
+  mutate(year = as.character(year))%>% 
+  rename(int = `(Intercept)`)
+
+# 
+grow.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+
+
+# Compute correlations and p-values
+cor_results <- lapply(names(grow.corr), function(v) {
+  test <- cor.test(grow.corr$int, grow.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results_plec <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+#cor_results_growth <- cor_results_growth[order(-abs(cor_results_growth$correlation)), ]
+#summer tot.precip only with with correlation
+```
 
 
 
@@ -172,6 +224,11 @@ seablush6.2 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+
 seablush6.3<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = plec, REML = F)
 seablush6.4 <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = plec, REML = F)
 seablush6.5 <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = plec, REML = F)
+
+seablush7 <- lmer(log.lambda ~ log.total1+summer.tot.precip + summer.mean.max.temp+  (1|year)+ (1|plot), data = plec, REML = F)
+seablush7.1 <- lmer(log.lambda ~ log.total1*summer.tot.precip + summer.mean.max.temp+  (1|year)+ (1|plot), data = plec, REML = F)
+seablush7.2 <- lmer(log.lambda ~ log.total1*summer.mean.max.temp+summer.tot.precip +   (1|year)+ (1|plot), data = plec, REML = F)
+
 
 models.plec <- mget(ls(pattern = "^seablush"))
 plec_AICc<-aictab(cand.set = models.plec,second.ord=TRUE,nobs=NULL,sort=TRUE)
@@ -298,7 +355,8 @@ booted.p <- cross_join(pred.dat.st, plec_samp) %>%
 (summer <- plec %>% 
   ggplot(aes(x = log.total1, y = log.lambda))+
   geom_hline(yintercept=0, alpha = 0.25, linetype = "dashed")+
-  geom_point(alpha= 0.6, shape = 1, aes(size = summer.mean.max.temp))+
+  geom_point(alpha= 0.6, shape = 1)+
+    geom_vline(xintercept = mean(plec$log.total1), color = "black", linetype= "dashed")+
   scale_size_continuous(range = c(2, 4)) +  # Adjust the size range as needed
   scale_color_manual(values=c( "lightskyblue", "indianred1"))+
   geom_line(data = booted.p, aes(x = log.total1, y = log.lambda, color = as.character(summer.mean.max.temp)), linewidth = 1.3)+
@@ -311,7 +369,7 @@ booted.p <- cross_join(pred.dat.st, plec_samp) %>%
   labels = c(1, 5, 25, 100, 400, 1000) )+
   theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
 
-ggsave(plot = summer, file = here("figures", "plec.summer.temp.png"), width = 6, height = 4, dpi = 300)
+ggsave(plot = summer, file = here("Figures", "annuals", "plec.summer.temp.png"), width = 6, height = 4, dpi = 300)
 
 ###
 #also plotting the other best supported model
@@ -347,9 +405,79 @@ booted.p <- cross_join(pred.dat.p, plec_samp) %>%
     scale_x_continuous(    breaks = log(c(1, 5, 25,  100, 400, 1000)),  # Log-transformed ticks
     labels = c(1, 5, 25, 100, 400, 1000) )+
     theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
-#ggsave(plot = summer.p, file = here("figures", "plec.summer.precip.png"), width = 6, height = 4, dpi = 300)
+ggsave(plot = summer.p, file = here("Figures", "annuals", "plec.summer.precip.png"), width = 6, height = 4, dpi = 300)
 
 ```
+
+```{r plec figure ESA}
+#bootstrapping:
+# set number of bootstrap samples:
+boot = 1000
+set.seed(12345)
+
+###
+#summary(seablush2)
+#parametric bootstrap
+#make matrix of random draws
+plec_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(seablush2.4), Sigma=vcov(seablush2.4)))
+colnames(plec_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.st <- expand.grid(log.total1.samp = mean(plec$log.total1), summer.mean.max.temp.samp = c(0, 2.3))
+pred.dat.st$Seq <- 1:nrow(pred.dat.st)
+
+booted.p <- cross_join(pred.dat.st, plec_samp) %>% 
+  rename(interact = 7) %>% 
+  mutate(log.lambda = Intercept + summer.mean.max.temp.samp*summer.mean.max.temp+log.total1.samp*log.total1 + interact*log.total1.samp*summer.mean.max.temp.samp) %>% 
+  group_by(Seq, summer.mean.max.temp.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         summer.mean.max.temp = summer.mean.max.temp.samp)%>%
+  mutate(
+    scenario = if_else(
+      summer.mean.max.temp == 0,
+      "current",
+      "future.temp"
+    ), 
+    life.history = "annual",
+    origin = "native"
+  )
+
+(future.fig <- booted.p %>%
+    mutate(
+    lambda = exp(log.lambda),
+    lower = exp(lower),
+    upper = exp(upper),
+    temp_scenario = factor(
+      ifelse(summer.mean.max.temp == 0, "Current", "Future"),
+      levels = c("Current", "Future")
+    )
+  ) |> 
+    ggplot(aes(x = temp_scenario, y = lambda)) +
+  geom_point(size = 3) +
+    geom_hline(yintercept = 1, 
+             linetype = "dashed", 
+             color = "grey") +
+  geom_errorbar(aes(ymin = lower, ymax = upper),
+                width = 0.1) +
+  labs(
+    x = "",
+    y = "λ"
+  )+
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
+
+ggsave(plot = future.fig, file = here("Figures", "annuals","plec.future.lambda.png"), width = 6, height = 4, dpi = 300)
+
+write.csv(booted.p, here("clean_data", "stoch_ipm", "plectritis.lambda.csv"), row.names = FALSE)
+
+
+```
+
+
+
+
 ```{r tqe plectritis  summer maxtemp}
 sigma <- sigma(seablush2.4) #Environmental variability not captured by summer temperature
 Nc <- median(plec$total1) #97
@@ -513,11 +641,46 @@ ggsave(plot = summer.precip.together, file = here("figures", "plec.popdyn.summer
 
 ```
 
+```{r correlate climate years with RE}
+base <- lmer(log.lambda ~ log.total1*year + (1|plot), data = bromus, REML = F)
+drop1(base,test="Chisq")
+base2 <- lmer(log.lambda ~ log.total1+year + (1|plot), data = bromus, REML = F)
+base3 <- lmer(log.lambda ~ log.total1+ (1|plot), data = bromus, REML = F)
+a2 <- anova(base3, base2, test="LRT") #yes year is significant
+best <- lmer(log.lambda ~ log.total1+ (1|year) + (1|plot), data = bromus, REML = F)
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best)$year),
+  var = "year") %>% 
+  mutate(year = as.character(year))%>% 
+  rename(int = `(Intercept)`)
+
+# 
+grow.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+
+
+# Compute correlations and p-values
+cor_results <- lapply(names(grow.corr), function(v) {
+  test <- cor.test(grow.corr$int, grow.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results_br <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+cor_results <- cor_results_growth[order(-abs(cor_results_growth$correlation)), ]
+#summer tot.precip only with with correlation
+```
+
 
 ```{r br moodel selection t}
-bromus <- bromus %>% 
-  mutate(log.lambda = log(lambda1),
-         log.total1 = log(total1))
+
  
 sterilis_base <- lmer(log.lambda ~ 1+(1|year)+ (1|plot), data = bromus, REML = F)
 sterilis_density <- lmer(log.lambda ~ log.total1 + (1|year)+ (1|plot), data = bromus, REML = F)
@@ -550,29 +713,41 @@ sterilis3.3<- lmer(log.lambda ~ log.total1*summer.tot.precip +trt  + (1|year)+ (
 sterilis3.4 <- lmer(log.lambda ~ log.total1*summer.tot.precip +  (1|year)+ (1|plot), data = bromus, REML = F)
 sterilis3.5 <- lmer(log.lambda ~ summer.tot.precip +(1|year)+ (1|plot), data = bromus, REML = F)
 
-sterilis4 <- lmer(log.lambda ~ log.total1+spring.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis4.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+spring.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis4.1 <- lmer(log.lambda ~ log.total1+spring.mean.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis4.2 <- lmer(log.lambda ~ log.total1+spring.mean.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
-sterilis4.3<- lmer(log.lambda ~ log.total1*spring.mean.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
-sterilis4.4 <- lmer(log.lambda ~ log.total1*spring.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis4.5 <- lmer(log.lambda ~ spring.mean.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4 <- lmer(log.lambda ~ log.total1+spring.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+spring.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.1 <- lmer(log.lambda ~ log.total1+spring.mean.max.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.2 <- lmer(log.lambda ~ log.total1+spring.mean.max.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.3<- lmer(log.lambda ~ log.total1*spring.mean.max.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis4.4 <- lmer(log.lambda ~ log.total1*spring.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis4.5 <- lmer(log.lambda ~ spring.mean.max.temp +(1|year)+ (1|plot), data = bromus, REML = F)
 
-sterilis5 <- lmer(log.lambda ~ log.total1+fall.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis5.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+fall.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis5.1 <- lmer(log.lambda ~ log.total1+fall.mean.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis5.2 <- lmer(log.lambda ~ log.total1+fall.mean.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
-sterilis5.3<- lmer(log.lambda ~ log.total1*fall.mean.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
-sterilis5.4 <- lmer(log.lambda ~ log.total1*fall.mean.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis5.5 <- lmer(log.lambda ~ fall.mean.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5 <- lmer(log.lambda ~ log.total1+fall.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+fall.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.1 <- lmer(log.lambda ~ log.total1+fall.mean.min.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.2 <- lmer(log.lambda ~ log.total1+fall.mean.min.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.3<- lmer(log.lambda ~ log.total1*fall.mean.min.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis5.4 <- lmer(log.lambda ~ log.total1*fall.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis5.5 <- lmer(log.lambda ~ fall.mean.min.temp +(1|year)+ (1|plot), data = bromus, REML = F)
 
-sterilis6 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis6.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis6.1 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis6.2 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
-sterilis6.3<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
-sterilis6.4 <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
-sterilis6.5 <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6 <- lmer(log.lambda ~ log.total1+winter.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.q <- lmer(log.lambda ~ I(log.total1^2)+log.total1+winter.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.1 <- lmer(log.lambda ~ log.total1+winter.mean.max.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.2 <- lmer(log.lambda ~ log.total1+winter.mean.max.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.3<- lmer(log.lambda ~ log.total1*winter.mean.max.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis6.4 <- lmer(log.lambda ~ log.total1*winter.mean.max.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.5 <- lmer(log.lambda ~ winter.mean.max.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis6a <- lmer(log.lambda ~ log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.qa <- lmer(log.lambda ~ I(log.total1^2)+log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.1a <- lmer(log.lambda ~ log.total1+winter.mean.min.temp + trt+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.2a <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.3a<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = bromus, REML = F)
+sterilis6.4a <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis6.5a <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = bromus, REML = F)
+
+sterilis7 <- lmer(log.lambda ~ log.total1+fall.mean.min.temp + winter.mean.max.temp+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis7.1 <- lmer(log.lambda ~ log.total1*fall.mean.min.temp + winter.mean.max.temp+ (1|year)+ (1|plot), data = bromus, REML = F)
+sterilis7.2 <- lmer(log.lambda ~ log.total1*winter.mean.max.temp+fall.mean.min.temp +  (1|year)+ (1|plot), data = bromus, REML = F)
 
 
 models.bromus <- mget(ls(pattern = "^sterilis"))
@@ -676,17 +851,17 @@ br_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(sterilis6), Sigma=vcov(ste
 colnames(br_samp)[1] <- "Intercept"
 #plec_samp
 # apply(plec_samp,2,mean) #double check that the means are similar to fixef
-pred.dat.st <- expand.grid(log.total1.samp = seq(0, 7, by = .5), winter.mean.min.temp.samp = c(min(bromus$winter.mean.min.temp, na.rm = T), max(bromus$winter.mean.min.temp, na.rm = T)))
+pred.dat.st <- expand.grid(log.total1.samp = seq(0, 7, by = .5), winter.mean.max.temp.samp = c(min(bromus$winter.mean.max.temp, na.rm = T), max(bromus$winter.mean.max.temp, na.rm = T)))
 pred.dat.st$Seq <- 1:nrow(pred.dat.st)
 
 booted.b <- cross_join(pred.dat.st, br_samp) %>% 
-  mutate(log.lambda = Intercept + winter.mean.min.temp.samp*winter.mean.min.temp+log.total1.samp*log.total1) %>% 
-  group_by(Seq, winter.mean.min.temp.samp,log.total1.samp ) %>% 
+  mutate(log.lambda = Intercept + winter.mean.max.temp.samp*winter.mean.max.temp+log.total1.samp*log.total1) %>% 
+  group_by(Seq, winter.mean.max.temp.samp,log.total1.samp ) %>% 
   summarize(lower = quantile(log.lambda , 0.025),
             upper = quantile(log.lambda , 0.975),
             log.lambda = mean(log.lambda)) %>% 
   rename(log.total1 = log.total1.samp,
-         winter.mean.min.temp = winter.mean.min.temp.samp)
+         winter.mean.max.temp = winter.mean.max.temp.samp)
 
 (winter.boot <- bromus %>% 
   ggplot(aes(x = log.total1, y = log.lambda))+
@@ -694,8 +869,8 @@ booted.b <- cross_join(pred.dat.st, br_samp) %>%
     geom_point(alpha= 0.6, shape = 1, aes(size =  winter.mean.min.temp))+
       scale_size_continuous(range = c(2, 4)) +  # Adjust the size range as needed
   scale_color_manual(values=c("#4059ae", "#f3b942"))+
-  geom_line(data = booted.b, aes(x = log.total1, y = log.lambda, color = as.character(winter.mean.min.temp)), linewidth = 1.3)+
-  geom_ribbon(data = booted.b, aes(ymin = lower, ymax = upper, fill = as.character(winter.mean.min.temp)), linewidth = .75, alpha = 0.2)+
+  geom_line(data = booted.b, aes(x = log.total1, y = log.lambda, color = as.character(winter.mean.max.temp)), linewidth = 1.3)+
+  geom_ribbon(data = booted.b, aes(ymin = lower, ymax = upper, fill = as.character(winter.mean.max.temp)), linewidth = .75, alpha = 0.2)+
   scale_fill_manual(values = c("#4059ae", "#f3b942"), guide = "none")+
   labs(x = bquote(""~italic(Bromus)*" per "~m^2*" + 1"), y = expression(italic("Bromus")~log(N[t+1] / N[t])), color = "Winter Min Temp")+
   guides(size = "none")+
@@ -705,10 +880,74 @@ booted.b <- cross_join(pred.dat.st, br_samp) %>%
   theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank())
 )
 
-#ggsave(plot = winter.boot, file = here("figures", "bromus.winter.boot.png"), width = 6, height = 4, dpi = 300)
+ggsave(plot = winter.boot, file = here("Figures", "annuals", "bromus.winter.boot.png"), width = 6, height = 4, dpi = 300)
 
 ```
 
+```{r ESA}
+boot = 1000
+set.seed(12345)
+
+#parametric bootstrap
+#make matrix of random draws
+br_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(sterilis6), Sigma=vcov(sterilis6)))
+colnames(br_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.st <- expand.grid(log.total1.samp = mean(bromus$log.total1), winter.mean.max.temp.samp = c(0, 1.3))
+pred.dat.st$Seq <- 1:nrow(pred.dat.st)
+
+booted.b <- cross_join(pred.dat.st, br_samp) %>% 
+  mutate(log.lambda = Intercept + winter.mean.max.temp.samp*winter.mean.max.temp+log.total1.samp*log.total1) %>% 
+  group_by(Seq, winter.mean.max.temp.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         winter.mean.max.temp = winter.mean.max.temp.samp)%>%
+  mutate(
+    scenario = if_else(
+      winter.mean.max.temp == 0,
+      "current",
+      "future.temp"
+    ), 
+    life.history = "annual",
+    origin = "invasive"
+  )
+
+
+
+(future.fig.b <- booted.b %>%
+    mutate(
+    lambda = exp(log.lambda),
+    lower = exp(lower),
+    upper = exp(upper),
+    temp_scenario = factor(
+      ifelse(winter.mean.max.temp == 0, "Current", "Future"),
+      levels = c("Current", "Future")
+    )
+  ) |> 
+    ggplot(aes(x = temp_scenario, y = lambda)) +
+  geom_point(size = 3) +
+    geom_hline(yintercept = 1, 
+             linetype = "dashed", 
+             color = "grey") +
+  geom_errorbar(aes(ymin = lower, ymax = upper),
+                width = 0.1) +
+  labs(
+    x = "",
+    y = "λ"
+  )+
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
+
+ggsave(plot = future.fig.b, file = here("Figures", "annuals","br.future.lambda.png"), width = 6, height = 4, dpi = 300)
+
+write.csv(booted.b, here("clean_data", "stoch_ipm", "bromus.lambda.csv"), row.names = FALSE)
+
+
+
+
+```
 
 ```{r bromus pva}
 sigma <-sigma(sterilis6)
@@ -812,4 +1051,209 @@ ggsave(plot = all, file = here("figures", "Figure1.png"), width = 10, height = 8
         panel.grid = element_blank(),
         axis.line=element_line())+
   labs(x = "", y = "Standardized climate", color = ""))
+```
+
+
+##claytonia
+```{r correlate climate years with RE}
+base <- lmer(log.lambda ~ log.total1*year + (1|plot), data = claytonia, REML = F)
+drop1(base,test="Chisq")
+#base2 <- lmer(log.lambda ~ log.total1+year + (1|plot), data = plec, REML = F)
+#base3 <- lmer(log.lambda ~ log.total1+ (1|plot), data = plec, REML = F)
+#a2 <- anova(base3, base2, test="LRT") #yes year is significant
+best <- lmer(log.lambda ~ log.total1+ (1|year) + (1|plot), data = plec, REML = F)
+
+re_year <- rownames_to_column(
+  as.data.frame(ranef(best)$year),
+  var = "year") %>% 
+  mutate(year = as.character(year))%>% 
+  rename(int = `(Intercept)`)
+
+# 
+grow.corr <- left_join(re_year, climate) %>% 
+  select(-year)
+
+
+# Compute correlations and p-values
+cor_results <- lapply(names(grow.corr), function(v) {
+  test <- cor.test(grow.corr$int, grow.corr[[v]])
+  data.frame(
+    variable = v,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+# Combine into one data frame
+cor_results_c <- do.call(rbind, cor_results)
+
+# Sort by absolute correlation
+#cor_results_growth <- cor_results_growth[order(-abs(cor_results_growth$correlation)), ]
+#summer tot.precip only with with correlation
+```
+
+
+
+```{r clay model selection}
+miner_base <- lmer(log.lambda ~ 1+(1|year)+ (1|plot), data = claytonia, REML = F)
+miner_density <- lmer(log.lambda ~ log.total1 + (1|year) + (1|plot), data = claytonia, REML = FALSE)
+miner_density.q <- lmer(log.lambda ~ I(log.total1^2) + log.total1 + (1|year) + (1|plot), data = claytonia, REML = FALSE)
+miner_trt <- lmer(log.lambda ~ log.total1+trt + (1|year)+ (1|plot), data = claytonia, REML = F)
+miner_trt.int <- lmer(log.lambda ~ log.total1*trt + (1|year)+ (1|plot), data = claytonia, REML = F)
+miner_trt.alone<- lmer(log.lambda ~ trt + (1|year)+ (1|plot), data = claytonia, REML = F)
+
+miner1 <- lmer(log.lambda ~ log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner1.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner1.1 <- lmer(log.lambda ~ log.total1+spring.tot.precip + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
+miner1.2 <- lmer(log.lambda ~ log.total1+spring.tot.precip *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
+miner1.3<- lmer(log.lambda ~ log.total1*spring.tot.precip +trt + (1|year)+(1|plot), data = claytonia, REML = F)
+miner1.4 <- lmer(log.lambda ~ log.total1*spring.tot.precip +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner1.5 <- lmer(log.lambda ~ spring.tot.precip +(1|year)+ (1|plot), data = claytonia, REML = F)
+
+miner2 <- lmer(log.lambda ~ log.total1+summer.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner2.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+summer.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner2.1 <- lmer(log.lambda ~ log.total1+summer.mean.min.temp + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
+miner2.2 <- lmer(log.lambda ~ log.total1+summer.mean.min.temp *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
+miner2.3<- lmer(log.lambda ~ log.total1*summer.mean.min.temp +trt + (1|year)+(1|plot), data = claytonia, REML = F)
+miner2.4 <- lmer(log.lambda ~ log.total1*summer.mean.min.temp + (1|year)+ (1|plot), data = claytonia, REML = F)
+miner2.5 <- lmer(log.lambda ~ summer.mean.min.temp +(1|year)+ (1|plot), data = claytonia, REML = F)
+
+miner5 <- lmer(log.lambda ~ log.total1+fall.mean.max.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner5.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+fall.mean.max.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner5.1 <- lmer(log.lambda ~ log.total1+fall.mean.max.temp + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
+miner5.2 <- lmer(log.lambda ~ log.total1+fall.mean.max.temp *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
+miner5.3<- lmer(log.lambda ~ log.total1*fall.mean.max.temp +trt + (1|year)+(1|plot), data = claytonia, REML = F)
+miner5.4 <- lmer(log.lambda ~ log.total1*fall.mean.max.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+miner5.5 <- lmer(log.lambda ~ fall.mean.max.temp +(1|year)+ (1|plot), data = claytonia, REML = F)
+
+# miner6 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+# miner6.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+# miner6.1 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
+# miner6.2 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
+# miner6.3<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = claytonia, REML = F)
+# miner6.4 <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
+# miner6.5 <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = claytonia, REML = F)
+# 
+# miner7 <- lmer(log.lambda ~ log.total1+summer.tot.precip + summer.mean.max.temp+  (1|year)+ (1|plot), data = claytonia, REML = F)
+# miner7.1 <- lmer(log.lambda ~ log.total1*summer.tot.precip + summer.mean.max.temp+  (1|year)+ (1|plot), data = claytonia, REML = F)
+# miner7.2 <- lmer(log.lambda ~ log.total1*summer.mean.max.temp+summer.tot.precip +   (1|year)+ (1|plot), data = claytonia, REML = F)
+
+
+models.claytonia <- mget(ls(pattern = "^miner"))
+claytonia_AICc<-aictab(cand.set = models.claytonia,second.ord=TRUE,nobs=NULL,sort=TRUE)
+
+summary(miner5.4)
+# summary(miner3.4)
+
+```
+```{r plec figure}
+#bootstrapping:
+# set number of bootstrap samples:
+boot = 1000
+set.seed(12345)
+
+###
+#summary(seablush2)
+#parametric bootstrap
+#make matrix of random draws
+c_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(miner5.4), Sigma=vcov(miner5.4)))
+colnames(c_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.st <- expand.grid(log.total1.samp = seq(0, 6.1, by = .5), fall.mean.max.temp.samp = c(min(claytonia$fall.mean.max.temp, na.rm = T), max(claytonia$fall.mean.max.temp, na.rm = T)))
+pred.dat.st$Seq <- 1:nrow(pred.dat.st)
+
+booted.p <- cross_join(pred.dat.st, c_samp) %>% 
+  rename(interact = 7) %>% 
+  mutate(log.lambda = Intercept + fall.mean.max.temp.samp*fall.mean.max.temp+log.total1.samp*log.total1 + interact*log.total1.samp*fall.mean.max.temp.samp) %>% 
+  group_by(Seq, fall.mean.max.temp.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         fall.mean.max.temp = fall.mean.max.temp.samp)
+
+(clay.fall <- claytonia %>% 
+  ggplot(aes(x = log.total1, y = log.lambda))+
+  geom_hline(yintercept=0, alpha = 0.25, linetype = "dashed")+
+  geom_point(alpha= 0.6, shape = 1)+
+  scale_size_continuous(range = c(2, 4)) +  # Adjust the size range as needed
+  scale_color_manual(values=c( "#71250E", "#EB781B"))+
+  geom_line(data = booted.p, aes(x = log.total1, y = log.lambda, color = as.character(fall.mean.max.temp)), linewidth = 1.3)+
+  geom_ribbon(data = booted.p, aes(ymin = lower, ymax = upper, fill = as.character(fall.mean.max.temp)), linewidth = .75, alpha = 0.2)+
+  scale_fill_manual(values = c("#71250E", "#EB781B"), guide = "none")+
+  labs(x = bquote(""~italic("Claytonia")*" per "~m^2*" + 1"), y = expression(italic("Claytonia")~log(N[t+1] / N[t])), color = "Fall Temp")+
+  guides(size = "none")+
+  scale_y_continuous(limits = c(-7, 4), breaks = seq(-7, 4, by = 1))+ 
+  scale_x_continuous(breaks = log(c(1, 5, 25,  100, 400, 1000)),  # Log-transformed ticks
+  labels = c(1, 5, 25, 100, 400, 1000) )+
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
+
+ggsave(plot = clay.fall, file = here("Figures", "annuals", "clay.fall.temp.png"), width = 6, height = 4, dpi = 300)
+
+
+
+```
+
+```{r plec figure ESA}
+#bootstrapping:
+# set number of bootstrap samples:
+boot = 1000
+set.seed(12345)
+
+###
+c_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(miner5.4), Sigma=vcov(miner5.4)))
+colnames(c_samp)[1] <- "Intercept"
+#plec_samp
+# apply(plec_samp,2,mean) #double check that the means are similar to fixef
+pred.dat.st <- expand.grid(log.total1.samp = mean(claytonia$log.total1), fall.mean.max.temp.samp = c(0, .25))
+pred.dat.st$Seq <- 1:nrow(pred.dat.st)
+
+booted.c <- cross_join(pred.dat.st, c_samp) %>% 
+  rename(interact = 7) %>% 
+  mutate(log.lambda = Intercept + fall.mean.max.temp.samp*fall.mean.max.temp+log.total1.samp*log.total1 + interact*log.total1.samp*fall.mean.max.temp.samp) %>% 
+  group_by(Seq, fall.mean.max.temp.samp,log.total1.samp ) %>% 
+  summarize(lower = quantile(log.lambda , 0.025),
+            upper = quantile(log.lambda , 0.975),
+            log.lambda = mean(log.lambda)) %>% 
+  rename(log.total1 = log.total1.samp,
+         fall.mean.max.temp = fall.mean.max.temp.samp) %>%
+  mutate(
+    scenario = if_else(
+      fall.mean.max.temp == 0,
+      "current",
+      "future.temp"
+    ), 
+    life.history = "annual",
+    origin = "native"
+  )
+
+(future.fig <- booted.c %>%
+    mutate(
+    lambda = exp(log.lambda),
+    lower = exp(lower),
+    upper = exp(upper),
+    temp_scenario = factor(
+      ifelse(fall.mean.max.temp == 0, "Current", "Future"),
+      levels = c("Current", "Future")
+    )
+  ) |> 
+    ggplot(aes(x = temp_scenario, y = lambda)) +
+  geom_point(size = 3) +
+    geom_hline(yintercept = 1, 
+             linetype = "dashed", 
+             color = "grey") +
+  geom_errorbar(aes(ymin = lower, ymax = upper),
+                width = 0.1) +
+  labs(
+    x = "",
+    y = "λ"
+  )+
+  theme(axis.line = element_line(colour = 'black'), text = element_text(size = 13), legend.title=element_text(size=13), panel.grid = element_blank()))
+
+ggsave(plot = future.fig, file = here("Figures", "annuals","clay.future.lambda.png"), width = 6, height = 4, dpi = 300)
+
+write.csv(booted.c, here("clean_data", "stoch_ipm", "claytonia.lambda.csv"), row.names = FALSE)
+
+
 ```
