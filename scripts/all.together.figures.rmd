@@ -106,7 +106,7 @@ pd <- position_dodge(width = 0.4)
        theme(
     axis.text.x = element_text(
       angle = 45,
-      hjust = 1)))
+      hjust = 1), strip.background = element_blank()))
 ggsave(plot = treatments, file = here("Figures", "all","treatments.png"), width = 7, height = 4, dpi = 300)
 
 
