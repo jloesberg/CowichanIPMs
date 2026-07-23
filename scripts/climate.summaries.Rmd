@@ -364,7 +364,7 @@ ggsave(plot = raw.norm.spp.short, here("Figures","climate", "raw.data.with.norma
 ```{r differences ebtween today adn future}
 # Keep only the future periods you plotted (if desired)
 future_table <- fut_long %>%
-  filter(grepl("370", period)) %>%   # keep only periods containing "370"
+  filter(grepl("245", period)) %>%   # keep only periods containing "370"
   filter(grepl("2041", period)) %>%   # keep future periods
   select(season, measurement, period, future_value) %>%
   left_join(

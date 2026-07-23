@@ -517,59 +517,55 @@ kernel_info <- params %>%
 
 (prev.sp <- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
    geom_smooth(
-    aes(group = 1),
+    aes(color = trt, group = trt),
     method = "lm",
-    se = F,
-    color = "black")+
-        facet_wrap(~trt)+
+    se = F)+
+     scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
   labs(x = "Previous spring mean temperature",
     y = expression(lambda),
-    color = "Year"))
+    color = ""))
 (wt.p <- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot( aes(x = fall.mean.temp, y = lambda, color = factor(Year))) +
+    ggplot( aes(x = fall.mean.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
-    facet_wrap(~trt)+
     geom_smooth(
-    aes(group = 1),
+    aes(group = trt),
     method = "lm",
-    se = F,
-    color = "black")+
+    se = F)+
+      scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
   labs(
     x = "Fall mean temp",
     y = expression(lambda),
-    color = "Year" ))
+    color = "" ))
 (sm.p <- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = prev_fall.mean.temp, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = prev_fall.mean.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
     geom_smooth(
-    aes(group = 1),
+    aes(group = trt),
     method = "lm",
-    se = F,
-    color = "black")+
-        facet_wrap(~trt)+
+    se = F)+
+  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
   labs(x = "Previous fall mean temp",
     y = expression(lambda),
-    color = "Year"))
+    color = ""))
 
 (wt.t<- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = spring.tot.precip, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = spring.tot.precip, y = lambda, color = trt)) +
   geom_point(size = 2) +
-    facet_wrap(~trt)+
     geom_smooth(
-    aes(group = 1),
+    aes(group = trt),
     method = "lm",
-    se = F,
-    color = "black")+
+    se = F)+
+      scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
   labs(
     x = "Spring total precip",
     y = expression(lambda),
-    color = "Year" ))
+    color = "" ))
 
 # (sp.temp <- dac_lambda %>%
 #   filter(summer.tot.precip == 0, summer.mean.max.temp == 0) %>% 
@@ -720,7 +716,9 @@ write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "lomatium.stoch.lambda.c
 
 ```{r}
 (
-lam.s <- ggplot(stoch_lambda, 
+lam.s <- stoch_lambda |> 
+  filter(scenario!="future") |> 
+  ggplot(
        aes(x = scenario, y = stochastic_lambda, color = trt)) +
   geom_point(size = 4,
              position = position_dodge(width = 0.4)) +
@@ -751,6 +749,9 @@ ggsave(here("Figures", "Lomatium", "STOCH_LAM_SCENARIOS.png"), plot = lam.s, wid
 ```
 
 
+
+
+###
 ```{r}
 kernel_info_current <- params %>%
   filter(scenario == "current") %>%

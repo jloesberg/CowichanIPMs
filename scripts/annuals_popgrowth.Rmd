@@ -423,7 +423,7 @@ plec_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(seablush2.4), Sigma=vcov
 colnames(plec_samp)[1] <- "Intercept"
 #plec_samp
 # apply(plec_samp,2,mean) #double check that the means are similar to fixef
-pred.dat.st <- expand.grid(log.total1.samp = mean(plec$log.total1), summer.mean.max.temp.samp = c(0, 2.3))
+pred.dat.st <- expand.grid(log.total1.samp = mean(plec$log.total1), summer.mean.max.temp.samp = c(0, 1.96))
 pred.dat.st$Seq <- 1:nrow(pred.dat.st)
 
 booted.p <- cross_join(pred.dat.st, plec_samp) %>% 
@@ -894,7 +894,7 @@ br_samp =as.data.frame(MASS::mvrnorm(n=boot, mu=fixef(sterilis6), Sigma=vcov(ste
 colnames(br_samp)[1] <- "Intercept"
 #plec_samp
 # apply(plec_samp,2,mean) #double check that the means are similar to fixef
-pred.dat.st <- expand.grid(log.total1.samp = mean(bromus$log.total1), winter.mean.max.temp.samp = c(0, 1.3))
+pred.dat.st <- expand.grid(log.total1.samp = mean(bromus$log.total1), winter.mean.max.temp.samp = c(0, 1.2))
 pred.dat.st$Seq <- 1:nrow(pred.dat.st)
 
 booted.b <- cross_join(pred.dat.st, br_samp) %>% 

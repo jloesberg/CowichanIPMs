@@ -486,7 +486,7 @@ kernel_info <- params %>%
 
 (wt.p <- dac_lambda %>%
    filter(scenario == "current") |> 
-    ggplot( aes(x = prev_winter.tot.precip, y = lambda, color = factor(Year))) +
+    ggplot( aes(x = prev_winter.tot.precip, y = lambda)) +
   geom_point(size = 2) +
   geom_smooth(
     aes(group = 1),
@@ -499,7 +499,7 @@ kernel_info <- params %>%
     color = "Year" ))
 (sm.p <- dac_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = summer.tot.precip, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = summer.tot.precip, y = lambda)) +
   geom_point(size = 2) +
   geom_smooth(
     aes(group = 1),
@@ -512,7 +512,7 @@ kernel_info <- params %>%
 
 (wt.t<- dac_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = winter.mean.min.temp, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = winter.mean.min.temp, y = lambda)) +
   geom_point(size = 2) +
     geom_smooth(
     aes(group = 1),
@@ -525,7 +525,7 @@ kernel_info <- params %>%
     color = "Year" ))
 (prev.sp <- dac_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = prev_spring.mean.temp, y = lambda)) +
   geom_point(size = 2) +
       geom_smooth(
     aes(group = 1),
@@ -537,7 +537,7 @@ kernel_info <- params %>%
     color = "Year"))
 (sp <- dac_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
+    ggplot(aes(x = spring.mean.temp, y = lambda)) +
   geom_point(size = 2) +
   geom_smooth(
     aes(group = 1),
@@ -685,7 +685,9 @@ write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "dactylis.stoch.lambda.c
 
 ```{r}
 (
-lam.s <- ggplot(stoch_lambda, 
+lam.s <- stoch_lambda |> 
+  filter(scenario != "future") |> 
+  ggplot(
        aes(x = scenario, y = stochastic_lambda)) +
   geom_point(size = 4) +
   geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI),

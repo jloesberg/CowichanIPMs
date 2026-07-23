@@ -248,7 +248,7 @@ params <- params %>%
       ~ tidyr::replace_na(., 0)))
 ```
 
-_plain, deterministic IPM_
+
 ```{r parameters for vital rate models}
 #gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 # fixef(gm.st.i)
@@ -501,31 +501,31 @@ kernel_info <- params %>%
 
 (sp <- prim_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = spring.mean.temp, y = lambda, color = factor(Year))) +
+  ggplot(aes(x = spring.mean.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
+     scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
    geom_smooth(
     aes(group = 1),
     method = "lm",
     se = F,
     color = "black")+
-        facet_wrap(~trt)+
   labs(x = " Spring mean temperature",
     y = expression(lambda),
-    color = "Year"))
+    color = ""))
 (wt.p <- prim_lambda %>%
    filter(scenario == "current") |> 
-    ggplot( aes(x = prev_winter.mean.min.temp, y = lambda, color = factor(Year))) +
+    ggplot( aes(x = prev_winter.mean.min.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
-    facet_wrap(~trt)+
     geom_smooth(
     aes(group = 1),
     method = "lm",
     se = F,
     color = "black")+
+  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
   labs(
     x = "Previous winter temp",
     y = expression(lambda),
-    color = "Year" ))
+    color = "" ))
 
 
  (together <- (wt.p + sp)+  plot_layout(guides = "collect"))
@@ -666,7 +666,9 @@ write.csv(stoch_lambda, here("clean_data", "stoch_ipm", "primula.stoch.lambda.cs
 
 ```{r}
 (
-p.s <- ggplot(stoch_lambda, 
+p.s <- stoch_lambda |> 
+  filter(scenario != "future") |> 
+  ggplot(
        aes(x = scenario, y = stochastic_lambda, color = trt)) +
   geom_point(size = 4,
              position = position_dodge(width = 0.4)) +
