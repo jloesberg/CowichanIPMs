@@ -104,6 +104,7 @@ pd <- position_dodge(width = 0.4)
   ) +
       scale_color_manual(values = c("#e54e21", "#3088a3")) +
        theme(
+             panel.spacing = unit(1.5, "cm"),
     axis.text.x = element_text(
       angle = 45,
       hjust = 1), strip.background = element_blank()))
