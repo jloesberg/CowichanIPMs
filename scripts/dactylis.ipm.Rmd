@@ -60,7 +60,7 @@ sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.
 poisson.sp.wt.int2 <- glmer(No.panicles ~ log.no.stems*prev_winter.tot.precip + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"), family = "poisson")
 
 dac.new <- dac %>% 
-  filter(stage == "seedling" & No.stems<2) %>% 
+  filter(stage == "seedling" & No.stems<4) %>% 
   group_by(plantid) %>%
   slice_min(as.numeric(as.character(Year)), n = 1, with_ties = FALSE)
 #parameters for new plants
@@ -90,7 +90,7 @@ plot_summary <- dac %>%
 
   group_by(Plot, Year) %>%
   summarise(
-    seedlings_t = sum(stage == "seedling" & No.stems < 2, na.rm = TRUE),
+    seedlings_t = sum(stage == "seedling" & No.stems < 3, na.rm = TRUE),
     panicles_t = sum(No.panicles, na.rm = TRUE),
     .groups = "drop") %>% 
   drop_na()
@@ -202,7 +202,7 @@ params$surv.slope <- survival["log.no.stems"] +
 
 
 #params$no.seeds <- no.seeds
-params$pest <- .1
+params$pest <- mean(pest$pest)
 params$recruit.size.mean <- new_mean # mean new 
 params$recruit.size.sd<- new_sd # sd of new 
 ```
@@ -235,6 +235,9 @@ g.yx<-function(y,x,params){
   #dnorm(y,mean=params$growth.int + params$growth.slope*x,sd=params$growth.sd)
 }
 
+#g.yx(x = 0, y = 5,params = params.)
+
+
 #Tom Miller's combined s and g kernel
 P <- function(y, x, params){
   s.x(x, params)*g.yx(y, x, params)
@@ -252,7 +255,7 @@ f.yx <- function(x,params) {
   return(pf.x(x,params)*exp(params$no.flow.int+params$no.flow.slope*x)* params$pest)
 }
 ##so this should be outputting the number of new plants made? Yes. pflower * how many flowers made * p(panicle making seedling)
-#f.yx(x = 7,params = params)
+#f.yx(x = 5,params = params.)
 
 
 ##do big plants make a million flowers?
@@ -264,6 +267,8 @@ recruit.size<-function(y,params){
     ## returns a *probability density distribution*
   dnorm(y,mean=params$recruit.size.mean,sd=params$recruit.size.sd)
 }
+#recruit.size(y = 2,params = params.)
+
 ```
 
 ```{r}
@@ -521,24 +526,48 @@ p(est) simulations:
 params. <- params |> 
   filter(prev_spring.mean.temp == 0,
          winter.mean.min.temp == 0,
-         summer.tot.precip == 1 ,
+         summer.tot.precip == 0 ,
          prev_winter.tot.precip==0,
          spring.mean.temp ==0)
- params.$pest <- .2
+ #params.$pest <- .2
 
-pest_values <- seq(0.000001, 0.5, length.out = 10)
+pest_values <- seq(0.0001, .25, length.out = 50)
+rec.size_values <- seq(0, 3, length.out = 50)
+rec.sd_values <- seq(0.1, .6, length.out = 50)
 
-params <- bind_rows(
+
+
+params.sim <- bind_rows(
+
+  # Vary pest
   lapply(pest_values, function(p) {
-    x <- params
+    x <- params.
     x$pest <- p
+    x$scenario <- "pest"
+    x
+  }),
+
+  # Vary recruit.size.mean
+  lapply(rec.size_values, function(r) {
+    x <- params.
+    x$recruit.size.mean <- r
+    x$scenario <- "rec.size"
+    x
+  }),
+
+  # Vary recruit.size.sd
+  lapply(rec.sd_values, function(s) {
+    x <- params.
+    x$recruit.size.sd <- s
+    x$scenario <- "rec.sd"
     x
   })
+
 )
 ```
 
 ```{r}
-params_list <- split(params., seq_len(nrow(params.)))
+params_list <- split(params.sim, seq_len(nrow(params.sim)))
 ###
 mat.size = 100 #dimensions of continuous matrix
 bigmatrix <- function(params_list, mat.size){
@@ -574,12 +603,11 @@ bigmatrix <- function(params_list, mat.size){
 
   out_lamb <- data.frame(
     lambda = lambda(IPMmat),
-    prev_spring.mean.temp = params_list$prev_spring.mean.temp,
-    winter.mean.min.temp = params_list$winter.mean.min.temp,
-    summer.tot.precip = params_list$summer.tot.precip,
-    spring.mean.temp = params_list$spring.mean.temp,
-    prev_winter.tot.precip= params_list$prev_winter.tot.precip,
-    pest = params_list$pest)
+    scenario = params_list$scenario,
+    pest = params_list$pest,
+    recruit.size.mean = params_list$recruit.size.mean,
+    recruit.size.sd = params_list$recruit.size.sd
+    )
 
   return(out_lamb)
 }
@@ -592,12 +620,43 @@ pest_results <- do.call(rbind, lamb_lists)
 ```
 
 ```{r}
-ggplot(pest_results, aes(x = pest, y = lambda)) +
-  geom_line(linewidth = 1) +
-  theme_minimal() +
-  labs(
-    x = "Probability of establishment",
-    y = expression(lambda)
+plot_data <- pest_results %>%
+  mutate(
+    x_value = case_when(
+      scenario == "pest" ~ pest,
+      scenario == "rec.size" ~ recruit.size.mean,
+      scenario == "rec.sd" ~ recruit.size.sd
+    ),
+    ref_value = case_when(
+      scenario == "pest" ~ mean_est,
+      scenario == "rec.size" ~ new_mean,
+      scenario == "rec.sd" ~ new_sd
+    )
   )
+
+(sims <- ggplot(plot_data, aes(x = x_value, y = lambda)) +
+  geom_line(linewidth = 1) +
+    geom_hline(yintercept = 1, color = "grey90")+
+  geom_vline(   
+    aes(xintercept = ref_value),
+    linetype = "dashed",
+    colour = "blue",
+    linewidth = 0.8
+  ) +
+  facet_wrap(
+    ~ scenario,
+    scales = "free_x",
+    labeller = as_labeller(c(
+      pest = "P(est)",
+      rec.size = "Mean log(recruit size)",
+      rec.sd = "Recruit size SD"
+    ))
+  ) +
+  labs(
+    x = "Parameter value",
+    y = expression(lambda)
+  )) 
+ggsave(here("Figures", "Dactylis", "recruit.simulations.png"), plot = sims, width = 10, height =4)
+
 ```
 

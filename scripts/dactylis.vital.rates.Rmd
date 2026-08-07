@@ -183,10 +183,11 @@ dac %>% filter(pflowerT == 1) %>%
     method.args=list(family="poisson"), se = F)+
   facet_wrap(~Plot)
 ```
+
 ```{r what size metric to use, and for pflower}
 #whats a better size measurement - log(no.stems *height) or log(no.stems)?
 size.test1 <- lmer(log.no.stemsT1 ~ log.no.stems + (1|Plot) + (1|Year), data = dac, REML = F)
-size.test2 <- lmer(log.no.stemsT1 ~ log(No.stems*Height) + (1|Plot) + (1|Year), data = dac, REML = F)
+size.test2 <- lmer(log(No.stemsT1*) ~ log(No.stems*Height) + (1|Plot) + (1|Year), data = dac, REML = F)
 AIC(size.test1, size.test2)
 #first one
 

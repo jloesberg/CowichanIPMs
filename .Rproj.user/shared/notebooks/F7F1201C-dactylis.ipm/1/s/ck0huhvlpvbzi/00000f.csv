@@ -46,7 +46,3 @@
 "0",""
 "0","#what I want returned is lambdas"
 "0","lamb_lists <- lapply(X = params_list, FUN = bigmatrix, mat.size = mat.size) #for each row of params_list, run the big matrix function!"
-"0",""
-"0","#great~! now make it a df"
-"0","dac_lambda <- do.call(rbind, lamb_lists)"
-"0",""
