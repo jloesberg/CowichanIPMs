@@ -1700,57 +1700,336 @@ write.csv(results_table, here("clean_data", "stoch_ipm", "bromus.lambda.csv"), r
 
 
 ```{r clay model selection}
-miner_base <- lmer(log.lambda ~ 1+(1|year)+ (1|plot), data = claytonia, REML = F)
-miner_density <- lmer(log.lambda ~ log.total1 + (1|year) + (1|plot), data = claytonia, REML = FALSE)
-miner_density.q <- lmer(log.lambda ~ I(log.total1^2) + log.total1 + (1|year) + (1|plot), data = claytonia, REML = FALSE)
-miner_trt <- lmer(log.lambda ~ log.total1+trt + (1|year)+ (1|plot), data = claytonia, REML = F)
-miner_trt.int <- lmer(log.lambda ~ log.total1*trt + (1|year)+ (1|plot), data = claytonia, REML = F)
-miner_trt.alone<- lmer(log.lambda ~ trt + (1|year)+ (1|plot), data = claytonia, REML = F)
+miner_base      <- glmmTMB(total1T1 ~ 1 + offset(log(total1)) +
+                                 (1|year) + (1|plot),
+                               family = nbinom2, data = claytonia)
+miner_density   <- glmmTMB(total1T1 ~ total1_z + offset(log(total1)) +
+                                 (1|year) + (1|plot),
+                               family = nbinom2, data = claytonia)
+miner_density.q <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + offset(log(total1)) +
+                                 (1|year) + (1|plot),
+                               family = nbinom2, data = claytonia)
+miner_trt       <- glmmTMB(total1T1 ~ total1_z + trt + offset(log(total1)) +
+                                 (1|year) + (1|plot),
+                               family = nbinom2, data = claytonia)
+miner_trt.int   <- glmmTMB(total1T1 ~ total1_z * trt + offset(log(total1)) +
+                                 (1|year) + (1|plot),
+                               family = nbinom2, data = claytonia)
+miner_trt.alone <- glmmTMB(total1T1 ~ trt + offset(log(total1)) +
+                                 (1|year) + (1|plot),
+                               family = nbinom2, data = claytonia)
 
-miner1 <- lmer(log.lambda ~ log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner1.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+spring.tot.precip +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner1.1 <- lmer(log.lambda ~ log.total1+spring.tot.precip + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
-miner1.2 <- lmer(log.lambda ~ log.total1+spring.tot.precip *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
-miner1.3<- lmer(log.lambda ~ log.total1*spring.tot.precip +trt + (1|year)+(1|plot), data = claytonia, REML = F)
-miner1.4 <- lmer(log.lambda ~ log.total1*spring.tot.precip +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner1.5 <- lmer(log.lambda ~ spring.tot.precip +(1|year)+ (1|plot), data = claytonia, REML = F)
+miner2   <- glmmTMB(total1T1 ~ total1_z + fall.mean.temp + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner2.q <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + fall.mean.temp +
+                          offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner2.1 <- glmmTMB(total1T1 ~ total1_z + fall.mean.temp + trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner2.2 <- glmmTMB(total1T1 ~ total1_z + fall.mean.temp * trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner2.3 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + trt + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner2.4 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+miner2.5 <- glmmTMB(total1T1 ~ fall.mean.temp + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner2.6 <- glmmTMB(total1T1 ~ total1_z + I(fall.mean.temp^2) + fall.mean.temp +
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
 
-miner2 <- lmer(log.lambda ~ log.total1+summer.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner2.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+summer.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner2.1 <- lmer(log.lambda ~ log.total1+summer.mean.min.temp + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
-miner2.2 <- lmer(log.lambda ~ log.total1+summer.mean.min.temp *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
-miner2.3<- lmer(log.lambda ~ log.total1*summer.mean.min.temp +trt + (1|year)+(1|plot), data = claytonia, REML = F)
-miner2.4 <- lmer(log.lambda ~ log.total1*summer.mean.min.temp + (1|year)+ (1|plot), data = claytonia, REML = F)
-miner2.5 <- lmer(log.lambda ~ summer.mean.min.temp +(1|year)+ (1|plot), data = claytonia, REML = F)
+miner3   <- glmmTMB(total1T1 ~ total1_z + spring.tot.precip + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner3.q <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + spring.tot.precip +
+                          offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner3.1 <- glmmTMB(total1T1 ~ total1_z + spring.tot.precip + trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner3.2 <- glmmTMB(total1T1 ~ total1_z + spring.tot.precip * trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner3.3 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + trt + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner3.4 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+miner3.5 <- glmmTMB(total1T1 ~ spring.tot.precip + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner3.6 <- glmmTMB(total1T1 ~ total1_z + I(spring.tot.precip^2) + spring.tot.precip +
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
 
-miner5 <- lmer(log.lambda ~ log.total1+fall.mean.max.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner5.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+fall.mean.max.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner5.1 <- lmer(log.lambda ~ log.total1+fall.mean.max.temp + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
-miner5.2 <- lmer(log.lambda ~ log.total1+fall.mean.max.temp *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
-miner5.3<- lmer(log.lambda ~ log.total1*fall.mean.max.temp +trt + (1|year)+(1|plot), data = claytonia, REML = F)
-miner5.4 <- lmer(log.lambda ~ log.total1*fall.mean.max.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-miner5.5 <- lmer(log.lambda ~ fall.mean.max.temp +(1|year)+ (1|plot), data = claytonia, REML = F)
 
-# miner6 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-# miner6.q <- lmer(log.lambda ~ I(log.total1^2) +log.total1+winter.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-# miner6.1 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp + trt+ (1|year)+ (1|plot), data = claytonia, REML = F)
-# miner6.2 <- lmer(log.lambda ~ log.total1+winter.mean.min.temp *trt +(1|year)+ (1|plot), data = claytonia, REML = F)
-# miner6.3<- lmer(log.lambda ~ log.total1*winter.mean.min.temp +trt + (1|year)+(1|plot), data = claytonia, REML = F)
-# miner6.4 <- lmer(log.lambda ~ log.total1*winter.mean.min.temp +  (1|year)+ (1|plot), data = claytonia, REML = F)
-# miner6.5 <- lmer(log.lambda ~ winter.mean.min.temp +(1|year)+ (1|plot), data = claytonia, REML = F)
-# 
-# miner7 <- lmer(log.lambda ~ log.total1+summer.tot.precip + summer.mean.max.temp+  (1|year)+ (1|plot), data = claytonia, REML = F)
-# miner7.1 <- lmer(log.lambda ~ log.total1*summer.tot.precip + summer.mean.max.temp+  (1|year)+ (1|plot), data = claytonia, REML = F)
-# miner7.2 <- lmer(log.lambda ~ log.total1*summer.mean.max.temp+summer.tot.precip +   (1|year)+ (1|plot), data = claytonia, REML = F)
 
+miner4   <- glmmTMB(total1T1 ~ total1_z + summer.mean.temp + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner4.q <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + summer.mean.temp +
+                          offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner4.1 <- glmmTMB(total1T1 ~ total1_z + summer.mean.temp + trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner4.2 <- glmmTMB(total1T1 ~ total1_z + summer.mean.temp * trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner3.3 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + trt + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner3.4 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+miner4.5 <- glmmTMB(total1T1 ~ summer.mean.temp + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner4.6 <- glmmTMB(total1T1 ~ total1_z + I(summer.mean.temp^2) + summer.mean.temp +
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+
+miner5   <- glmmTMB(total1T1 ~ total1_z + winter.mean.temp + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner5.q <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + winter.mean.temp +
+                          offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner5.1 <- glmmTMB(total1T1 ~ total1_z + winter.mean.temp + trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+miner5.2 <- glmmTMB(total1T1 ~ total1_z + winter.mean.temp * trt + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner5.3 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + trt + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner5.4 <- glmmTMB(total1T1 ~ total1_z * fall.mean.temp + offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+miner5.5 <- glmmTMB(total1T1 ~ winter.mean.temp + offset(log(total1)) +
+                          (1|year) + (1|plot),
+                        family = nbinom2, data = claytonia)
+# miner5.6 <- glmmTMB(total1T1 ~ total1_z + I(winter.mean.temp^2) + winter.mean.temp +
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner6 <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + winter.mean.temp + summer.mean.temp+
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner6.1 <- glmmTMB(total1T1 ~ total1_z + winter.mean.temp + summer.mean.temp+
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner6.2 <- glmmTMB(total1T1 ~ total1_z + I(total1_z^2) + winter.mean.temp + summer.mean.temp+
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
+# miner6.3 <- glmmTMB(total1T1 ~ total1_z + winter.mean.temp + summer.mean.temp+
+#                           offset(log(total1)) +
+#                           (1|year) + (1|plot),
+#                         family = nbinom2, data = claytonia)
 
 models.claytonia <- mget(ls(pattern = "^miner"))
 claytonia_AICc<-aictab(cand.set = models.claytonia,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
-summary(miner5.4)
-# summary(miner3.4)
+summary(miner5.q)
+summary(miner4.q)
+#rm(list = ls()[grepl("miner", ls())]) #removes everything with gm
+# climate_year <- claytonia %>%
+#   distinct(year, winter.mean.temp, summer.mean.temp, fall.mean.temp, spring.tot.precip)
+# 
+# cor.test(
+#   climate_year$winter.mean.temp,
+#   climate_year$summer.mean.temp,
+#   method = "pearson"
+# )
+```
+
+```{r}
+summary(miner5.q)
+coefs <- summary(miner4.q)$coefficients$cond
+
+c_best <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"]
+)
+
+write.csv(c_best, here("Tables", "claytonia_best_fit_coeff.csv"), row.names = F)
 
 ```
+
+
+```{r save AIC table}
+claytonia_AICc2 <- claytonia_AICc |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+
+
+
+get_fixed_formula <- function(m) {
+  f <- formula(m)
+  rhs <- deparse(f[[3]], width.cutoff = 500)
+  rhs <- paste(rhs, collapse = "")
+  rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
+  rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
+  rhs <- gsub("total1_z", "abundance", rhs)                    # rename density term
+  trimws(rhs)
+}
+
+fixed_formulas <- sapply(models.claytonia, get_fixed_formula)
+
+claytonia_AICc2$fixed_effects <- fixed_formulas[claytonia_AICc2$Modnames]
+
+
+pop.model.c <- claytonia_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+  relocate(fixed_effects, .before =1) |> 
+  select(c(1, 3, 3, 5, 7))
+  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
+
+pop.model.c %>% gt() %>% gtsave(here("Tables", "Claytonia.AIC.table.docx"))
+
+#pop.model.b %>% gt() %>% gtsave(file = here("tables", "POPDYN.bromus.docx"))
+#if there is an error it's because the doc already exists (delete it from wherever its saved ro resave it)
+
+```
+
+```{r}
+claytonia$log_mu <- predict(miner5.q, type = "link")   # this includes the offset by default
+claytonia$log_lambda_fitted <- claytonia$log_mu - log(claytonia$total1)
+
+(claytonia.comp <- ggplot(claytonia, aes(x = log.lambda, y = log_lambda_fitted)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "grey", linetype = "dashed"))
+#so theyre a bit off
+ggsave(plot = claytonia.comp, file = here("Figures", "annuals", "claytonia.comp.png"), width = 4, height = 4, dpi = 300)
+
+ggplot(claytonia, aes(x = winter.mean.temp, y = log_lambda_fitted)) +
+  geom_point() 
+ 
+
+
+newdat <- data.frame(
+  winter.mean.temp = seq(min(claytonia$winter.mean.temp), max(claytonia$winter.mean.temp), length.out = 100),
+  total1_z          = 0,     # hold density at its mean (z-scored, so 0 = mean)
+  total1            = 1      # forces offset = log(1) = 0, so response scale = lambda directly
+)
+
+# predict on link scale with SEs, population-level (ignore random effects)
+pred <- predict(miner5.q, newdata = newdat, type = "link",
+                 se.fit = TRUE, re.form = NA)
+
+newdat$log_lambda <- pred$fit
+newdat$se         <- pred$se.fit
+
+# back-transform to lambda scale with CI
+newdat$lambda    <- exp(newdat$log_lambda)
+newdat$lower     <- exp(newdat$log_lambda - 1.96 * newdat$se)
+newdat$upper     <- exp(newdat$log_lambda + 1.96 * newdat$se)
+
+# # plot
+ggplot(newdat, aes(x = winter.mean.temp, y = lambda)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  labs(x = "winter.mean.temp",
+       y = expression(paste("Predicted ", lambda)))
+```
+
+```{r}
+
+newdat_w <- expand.grid(
+  winter.mean.temp = seq(min(claytonia$winter.mean.temp), max(claytonia$winter.mean.temp), length.out = 100),
+  total1_z          = c(0, 1),
+  total1            = 1
+)
+
+pred_summer <- predict(miner5.q, newdata = newdat_w, type = "link",
+                        se.fit = TRUE, re.form = NA)
+
+newdat_w$log_lambda <- pred_summer$fit
+newdat_w$se         <- pred_summer$se.fit
+newdat_w$lambda     <- exp(newdat_w$log_lambda)
+newdat_w$lower      <- exp(newdat_w$log_lambda - 1.96 * newdat_w$se)
+newdat_w$upper      <- exp(newdat_w$log_lambda + 1.96 * newdat_w$se)
+newdat_w$density    <- factor(newdat_w$total1_z,
+                                    levels = c(0, 1),
+                                    labels = c("Mean density", "High density (+1 SD)"))
+
+(w.claytonia <- ggplot(newdat_w, aes(x = winter.mean.temp, y = lambda, color = density, fill = density)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = density), alpha = 0.15, color = NA) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  labs(x = "Winter mean temp",
+       y = expression(paste("Predicted ", lambda)),
+       color = "", fill = "") +
+       #   coord_cartesian(ylim = c(0, 6)) +
+    scale_color_manual(values = c("darkseagreen3", "#006400")) +
+      scale_fill_manual(values = c("darkseagreen3", "#006400")) )
+
+
+
+# (bromus.climate.lambda <- summer.bromus + spring.bromus + plot_annotation(tag_levels = "a")+ 
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom"))
+
+ggsave(plot = w.claytonia, file = here("Figures", "annuals", "claytonia.climate.lambda.png"), width = 7, height = 4, dpi = 300)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```{r plec figure}
 #bootstrapping:
 # set number of bootstrap samples:
