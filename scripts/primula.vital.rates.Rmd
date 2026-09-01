@@ -11,6 +11,7 @@ library(tidyverse)
 library(lme4)
 library(AICcmodavg)
 library(patchwork)
+library(gt) #for saving tables in a word doc
 theme_set(theme_classic(base_size = 18)) #for ggplot
 
 ```
@@ -20,21 +21,21 @@ primula <- read.csv(here("clean_data", "Primula_Demography_Data_CLEANED_2016thru
 climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
 climate<- climate %>%
   arrange(year) %>%
-  mutate(across(-year, ~lag(.x), .names = "prev_{.col}")) %>% 
-  select(c(year, winter.mean.min.temp, prev_winter.mean.min.temp, summer.mean.max.temp, prev_summer.mean.max.temp, spring.mean.temp, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, ends_with("tot.precip")))
+  mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))# %>% 
+#  select(c(year, winter.mean.min.temp, prev_winter.mean.min.temp, summer.mean.max.temp, prev_summer.mean.max.temp, spring.mean.temp, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, ends_with("tot.precip")))
 primula <- left_join(primula, climate)
 primula <- primula %>% 
-  filter(year!= "2016") %>% 
+  #filter(year!= "2016") %>% 
   group_by(tag) %>% 
   mutate(year = as.factor(year), 
     plot = as.factor(plot),
-    psurvival = factor(psurvival, levels = c(0, 1)),
-    psurvivalT1 = as.character(psurvivalT1),
-    psurvivalT1 = factor(psurvivalT1, levels = c(0, 1)),
-    pflower = factor(pflower, levels = c(0, 1)),
-    pflowerT1 = factor(pflowerT1, levels = c(0, 1)),
-    pclonal = factor(pclonal, levels = c(0, 1)),
-    log.ros.area.prev = log(ros.areaTminus1),
+    psurvival = as.factor(psurvival),
+    #psurvivalT1 = as.character(psurvivalT1),
+    psurvivalT1 = as.factor(psurvivalT1),
+    pflower = as.factor(pflower),
+    pflowerT1 = as.factor(pflowerT1),
+    pclonal = as.factor(pclonal),
+    #log.ros.area.prev = log(ros.areaTminus1),
     trt = as.factor(trt),
     trt = fct_relevel(trt, "irrigated", "control", "drought")) 
 primula.surv <- primula %>% 
@@ -108,6 +109,8 @@ ggplot(primula.surv, aes(x = log.ros.area, y = as.numeric(psurvivalT1)-1)) +
 
 
 ```{r growth prequel}
+#table(primula$year, primula$log.ros.areaT1)
+
 base <- lmer(log.ros.areaT1 ~ log.ros.area*year + (1|plot), data = primula, REML = F)
 drop1(base,test="Chisq") #yes interaction us significant
 # base2 <- lmer(log.ros.areaT1 ~ log.ros.area+year + (1|plot), data = primula, REML = F)
@@ -135,6 +138,8 @@ cor_results <- lapply( names(grow.corr), function(v) {
 
 cor_results_growth <- do.call(rbind, cor_results)
 cor_results_growth <- cor_results_growth[order(-abs(cor_results_growth$correlation)), ]
+cor_results_growth$p_value <- format(cor_results_growth$p_value, scientific = FALSE)
+
 #fall.tot.precip
 #spring.mean.temp
 
@@ -144,25 +149,42 @@ cor_results_growth <- cor_results_growth[order(-abs(cor_results_growth$correlati
 gm.base <- lmer(log.ros.areaT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, REML = F)
 gm.t <-  lmer(log.ros.areaT1 ~ log.ros.area + trt + (1|plot) + (1|year), data = primula, REML = F)
 gm.ti <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = primula, REML = F)
+
 gm.st <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.st.q <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + I(spring.mean.temp^2) + (1|plot) + (1|year), data = primula, REML = F)
 gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 gm.st.t <-  lmer(log.ros.areaT1 ~ log.ros.area+trt+spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 gm.st.ti <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 gm.st.ti2 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt+spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
-gm.st.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.st.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt +spring.mean.temp*trt + (1|plot) + (1|year), data = primula, REML = F)
+gm.st.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + trt + (1|plot) + (1|year), data = primula, REML = F)
+
+##
 
 gm.fp <-  lmer(log.ros.areaT1 ~ log.ros.area + fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
+gm.fp.q <-  lmer(log.ros.areaT1 ~ log.ros.area + fall.tot.precip + I(fall.tot.precip^2)+ (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.i <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.t <-  lmer(log.ros.areaT1 ~ log.ros.area+trt+fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.ti <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.ti2 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt+fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
-gm.fp.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt*fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
+gm.fp.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + fall.tot.precip*trt  + (1|plot) + (1|year), data = primula, REML = F)
+gm.fp.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + trt  + (1|plot) + (1|year), data = primula, REML = F)
+
+
+gm.su <-  lmer(log.ros.areaT1 ~ log.ros.area + summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.q <-  lmer(log.ros.areaT1 ~ log.ros.area + summer.mean.min.temp + I(summer.mean.min.temp^2) + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.i <-  lmer(log.ros.areaT1 ~ log.ros.area*summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.t <-  lmer(log.ros.areaT1 ~ log.ros.area+trt+summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*summer.mean.min.temp+trt + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti2 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt+summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + summer.mean.min.temp*trt  + (1|plot) + (1|year), data = primula, REML = F)
 
 growth <- mget(ls(pattern = "^gm"))
 g_AICc<-aictab(cand.set = growth,second.ord=TRUE,nobs=NULL,sort=TRUE)
 #gm.st.i
 #rm(list = ls(pattern = "^surv\\."))
-gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
+#gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 
 ```
 
@@ -190,8 +212,8 @@ spring::
 summer: "#89d3d6","#f69338"
 ```{r pflower prequel}
 table(primula$year, primula$pflower)
-pflow.base <- glmer(pflower ~ log.ros.area.prev + (1|plot) + (1|year), data = subset(primula, year != "2017"), family = "binomial")
-base.p <- glmer(pflower ~ log.ros.area.prev*year + (1|plot), data = subset(primula, year != "2017"), family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000)))
+pflow.base <- glmer(pflowerT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
+base.p <- glmer(pflowerT1 ~ log.ros.area*year + (1|plot), data = primula, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000)))
 drop1(base.p,test="Chisq") 
 
 re_year <- rownames_to_column(
