@@ -84,6 +84,16 @@ climate <- climate %>%
   mutate(year = as.factor(year)) %>% 
   filter(year != "2015")
 ```
+```{r}
+#NEW - need to update
+gm.su.sp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
+fm.prev_spring.mean.tempq <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + I(prev_spring.mean.temp^2)+ (1|Plot) + (1|Year), data = dac, family = "binomial")
+sm.wt.sp.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
+nb.prev_spring.mean.temp.q <- glmer.nb(No.panicles ~ log.no.stems + prev_spring.mean.max.temp + I(prev_spring.mean.max.temp^2) + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
+
+```
+
+
 
 ```{r}
 #pancile to seedlings proxy:

@@ -12,6 +12,8 @@ library(lme4)
 library(AICcmodavg)
 library(patchwork)
 library(gt) #for saving tables in a word doc
+library(glmmTMB)
+
 theme_set(theme_classic(base_size = 18)) #for ggplot
 
 ```
@@ -39,7 +41,7 @@ primula <- primula %>%
     trt = as.factor(trt),
     trt = fct_relevel(trt, "irrigated", "control", "drought")) 
 primula.surv <- primula %>% 
-  filter(!year %in% c("2025", "2026"),
+  filter(!year %in% c("2016", "2025", "2026"),
   !is.na(psurvivalT1))
 clonal <- primula %>% 
   filter(log.ros.area>0,
@@ -142,7 +144,10 @@ cor_results_growth$p_value <- format(cor_results_growth$p_value, scientific = FA
 
 #fall.tot.precip
 #spring.mean.temp
-
+p.unique <- primula %>%
+  ungroup() |> 
+  distinct(year, .keep_all = TRUE)
+cor.test(p.unique$fall.tot.precip, p.unique$spring.mean.temp)
 ```
 
 ```{r growth}
@@ -171,49 +176,120 @@ gm.fp.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + fall.tot.precip*trt  + (1
 gm.fp.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + trt  + (1|plot) + (1|year), data = primula, REML = F)
 
 
-gm.su <-  lmer(log.ros.areaT1 ~ log.ros.area + summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.q <-  lmer(log.ros.areaT1 ~ log.ros.area + summer.mean.min.temp + I(summer.mean.min.temp^2) + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.i <-  lmer(log.ros.areaT1 ~ log.ros.area*summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.t <-  lmer(log.ros.areaT1 ~ log.ros.area+trt+summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.ti <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*summer.mean.min.temp+trt + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.ti2 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt+summer.mean.min.temp + (1|plot) + (1|year), data = primula, REML = F)
-gm.su.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + summer.mean.min.temp*trt  + (1|plot) + (1|year), data = primula, REML = F)
+gm.su <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.q <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + I(spring.mean.temp^2)  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.q2 <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + I(fall.tot.precip^2)  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.i2 <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + spring.mean.temp  + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.t <-  lmer(log.ros.areaT1 ~ log.ros.area+trt+spring.mean.temp  + fall.tot.precip +  (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti.2 <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*fall.tot.precip  +  spring.mean.temp+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp+trt  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti4.2 <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + spring.mean.temp+trt + (1|plot) + (1|year), data = primula, REML = F)
+gm.su.ti2 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt+spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
 
 growth <- mget(ls(pattern = "^gm"))
-g_AICc<-aictab(cand.set = growth,second.ord=TRUE,nobs=NULL,sort=TRUE)
+growth_AICc<-aictab(cand.set = growth,second.ord=TRUE,nobs=NULL,sort=TRUE)
 #gm.st.i
 #rm(list = ls(pattern = "^surv\\."))
 #gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 
 ```
 
-```{r growth figure}
-pred.dat.g <- expand.grid(log.ros.area = seq(min(primula$log.ros.area, na.rm = TRUE), max(primula$log.ros.area, na.rm = TRUE), by = .1), spring.mean.temp = c(1, -1))
-pred.dat.output.g <- cbind(pred.dat.g, as.data.frame(predict(gm.st.i, newdata = pred.dat.g, type="response", re.form=~0, pred.var=TRUE)))
-colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.ros.areaT1"  # Renaming the last column
+```{r save growth}
+growth_AICc2 <- growth_AICc |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
+  arrange(AICc)
 
-(growth.fig <- primula %>% 
-  ggplot(aes(x = log.ros.area, y = log.ros.areaT1))+
-  geom_point(alpha = 0.4, shape = 1) +
-  geom_line(data = pred.dat.output.g, aes(color = factor(spring.mean.temp)),linewidth = 1.5) +
-  geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .2)+
-  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
+get_fixed_formula <- function(m) {
+  f <- formula(m)
+  rhs <- deparse(f[[3]], width.cutoff = 500)
+  rhs <- paste(rhs, collapse = "")
+  rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
+  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
+  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
+  trimws(rhs)
+}
+
+fixed_formulas <- sapply(growth, get_fixed_formula)
+
+growth_AICc2$fixed_effects <- fixed_formulas[growth_AICc2$Modnames]
+
+
+growth.d <- growth_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+  relocate(fixed_effects, .before =1) |> 
+  select(c(1, 3, 4, 5))
+  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
+
+growth.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.growth.docx"))
+
+#save the best fit model
+summary(gm.su.i)
+coefs <- summary(gm.su.i)$coefficients
+
+g.coef <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"]
+)
+
+write.csv(g.coef, here("Tables", "Primula", "primula_growth_best_fit_coeff.csv"), row.names = F)
+```
+
+```{r growth figure}
+pred.dat.g <- expand.grid(log.ros.area = seq(min(primula$log.ros.area, na.rm = TRUE), max(primula$log.ros.area, na.rm = TRUE), by = .1), spring.mean.temp = c(1, 0, -1), fall.tot.precip = c(1, 0, -1))
+pred.dat.output.g <- cbind(pred.dat.g, as.data.frame(predict(gm.su.i, newdata = pred.dat.g, type="response", re.form=~0, pred.var=TRUE)))
+colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.ros.areaT1"  # Renaming the last column
+# 
+# (growth.fig <- primula %>% 
+#   ggplot(aes(x = log.ros.area, y = log.ros.areaT1))+
+#   geom_point(alpha = 0.4, shape = 1) +
+#   geom_line(data = pred.dat.output.g, aes(color = factor(spring.mean.temp)),linewidth = 1.5) +
+#   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .2)+
+#   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
+#   legend.key = element_rect(fill = NA, colour = NA))+
+#   geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
+#   scale_color_manual(name = "Spring temp, t", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
+#   scale_y_continuous(expand = c(0, 0), limits = c(0, 6))+
+#   scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0)))
+
+#   labs( x = "log(Rosette Area) in t", y = "log(Rosette Area) in t + 1", linetype = "Temp.", color = "")+
+(growth.sp <- primula %>%
+ ggplot(aes(x = log.ros.area, y = log.ros.areaT1))+
+    geom_point(data = primula ,alpha = 0.5, shape = 1)+  
+    geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
+    geom_line(data = subset(pred.dat.output.g, fall.tot.precip == 0 & spring.mean.temp !=0), aes(color = factor(spring.mean.temp)),linewidth = 1.5) +
+   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
+   legend.key = element_rect(fill = NA, colour = NA))+
+  scale_color_manual(name = "Spring temp, t", values = c("#00a3a3","#d72a96"), labels = c("Cool", "Warm")) +
+   scale_y_continuous(expand = c(0, 0), limits = c(0, 6))+
+   scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+
+    labs(x = "log(Rosette Area) in t", y = "log(Rosette Area) in t + 1"))
+
+(growth.su <- primula %>%
+ ggplot(aes(x = log.ros.area, y = log.ros.areaT1))+
+    geom_point(data = primula ,alpha = 0.5, shape = 1)+
+        geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
+      geom_line(data = subset(pred.dat.output.g, spring.mean.temp == 0 & fall.tot.precip != 0), aes(color = factor(fall.tot.precip)),linewidth = 1.5) +
+   theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, .9),   legend.background = element_rect(fill = NA, colour = NA),
   legend.key = element_rect(fill = NA, colour = NA))+
-  geom_abline(slope=1, intercept = 0, color= "grey", linewidth = .4)+
-  scale_color_manual(name = "Spring temp, t", values = c("#00a3a3","#d72a96"), labels = c("cool", "warm")) +
-  scale_y_continuous(expand = c(0, 0), limits = c(0, 6))+
-  labs( x = "log(Rosette Area) in t", y = "log(Rosette Area) in t + 1", linetype = "Temp.", color = "")+
-  scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0)))
+  scale_color_manual(name = "Fall precip, t", values = c("#c64f20","#345062"), labels = c("Dry", "Wet")) +
+   scale_y_continuous(expand = c(0, 0), limits = c(0, 6))+
+   scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+
+  labs(x = "log(Rosette Area) in t", y = "log(Rosette Area) in t + 1"))
+
+(gr.fig <- growth.sp+growth.su +  plot_annotation(tag_levels = 'i') + plot_layout(axes = "collect")
+)
 ggsave(here("Figures", "Primula", "growth.png"), plot = growth.fig, width = 6, height =6)
 ```
-spring::
-"#00a3a3","#d72a96
-summer: "#89d3d6","#f69338"
+
+
+
 ```{r pflower prequel}
-table(primula$year, primula$pflower)
-pflow.base <- glmer(pflowerT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
-base.p <- glmer(pflowerT1 ~ log.ros.area*year + (1|plot), data = primula, family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000)))
+table(primula$year, primula$pflowerT1)
+pflow.base <- glmer(pflowerT1 ~ log.ros.area + (1|plot) + (1|year), data = subset(primula, year !="2026"), family = "binomial")
+base.p <- glmer(pflowerT1 ~ log.ros.area*year + (1|plot), data = subset(primula, year !="2026"), family = "binomial", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000)))
 drop1(base.p,test="Chisq") 
 
 re_year <- rownames_to_column(
@@ -238,39 +314,72 @@ cor_results_pflower <- do.call(rbind, cor_results)
 
 # Sort by absolute correlation
 cor_results_pflower <- cor_results_pflower[order(-abs(cor_results_pflower$correlation)), ]
+cor_results_pflower$p_value <- format(cor_results_pflower$p_value, scientific = FALSE)
+
 ```
 
 ```{r pflower}
-pmflow.base <- glmer(pflower ~ log.ros.area.prev + (1|plot) + (1|year), data = subset(primula, year != "2017"), family = "binomial")
-pmflow.t <-  glmer(pflower ~ log.ros.area.prev + trt + (1|plot) + (1|year), data = subset(primula, year != "2017"), family = "binomial")
-pmflow.ti <-  glmer(pflower ~ log.ros.area.prev*trt + (1|plot) + (1|year), data = subset(primula, year != "2017"), family = "binomial")
+pmflow.base <- glmer(pflowerT1 ~ log.ros.area + (1|plot) + (1|year), data = subset(primula, year != "2026"), family = "binomial")
+pmflow.t <-  glmer(pflowerT1 ~ log.ros.area + trt + (1|plot) + (1|year), data = subset(primula, year != "2026"), family = "binomial")
+pmflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = subset(primula, year != "2026"), family = "binomial")
 
 modelpflower <- mget(ls(pattern = "^pmflow."))
-pf_AICc<-aictab(cand.set = modelpflower,second.ord=TRUE,nobs=NULL,sort=TRUE)
+pflower_AICc<-aictab(cand.set = modelpflower,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
-pf_AICc <- pf_AICc %>% 
-  arrange(AICc)
-pf_AICc$vitalrate <- "pflower"
-#AIC.save <- bind_rows(AIC.save, pf_AICc)
-rm(list = ls(pattern = "^pmflow\\."))
-
-#pflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = primula, family = "binomial")
 summary(pmflow.ti)
 ```
 
+```{r save pflower}
+pflower_AICc2 <- pflower_AICc |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
+  arrange(AICc)
+
+get_fixed_formula <- function(m) {
+  f <- formula(m)
+  rhs <- deparse(f[[3]], width.cutoff = 500)
+  rhs <- paste(rhs, collapse = "")
+  rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
+  trimws(rhs)
+}
+
+fixed_formulas <- sapply(modelpflower, get_fixed_formula)
+
+pflower_AICc2$fixed_effects <- fixed_formulas[pflower_AICc2$Modnames]
+
+
+flower.d <- pflower_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+  relocate(fixed_effects, .before =1) |> 
+  select(c(1, 3, 4, 5))
+
+flower.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.pflower.docx"))
+
+#save the best fit model
+summary(pmflow.ti)
+coefs <- summary(pmflow.ti)$coefficients
+
+f.coef <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"]
+)
+
+write.csv(f.coef, here("Tables", "Primula","primula_pflower_best_fit_coeff.csv"), row.names = F)
+```
+
 ```{r pflower figure}
-pred.dat.pf <- expand.grid(log.ros.area.prev = seq(min(primula$log.ros.area.prev, na.rm = TRUE), max(primula$log.ros.area.prev, na.rm = TRUE), by = .1), trt = c("drought", "control", "irrigated"))
+pred.dat.pf <- expand.grid(log.ros.area = seq(min(primula$log.ros.area, na.rm = TRUE), max(primula$log.ros.area, na.rm = TRUE), by = .1), trt = c("drought", "control", "irrigated"))
 pred.dat.output.pf <- cbind(pred.dat.pf, as.data.frame(predict(pmflow.ti, newdata = pred.dat.pf, type="response", re.form=~0, pred.var=TRUE)))
- colnames(pred.dat.output.pf)[ncol(pred.dat.output.pf)] <- "pflower"  # Renaming the last column
+ colnames(pred.dat.output.pf)[ncol(pred.dat.output.pf)] <- "pflowerT1"  # Renaming the last column
 
 (pflower.fig <- primula %>% 
-  ggplot(aes(x = log.ros.area.prev, y = as.numeric(pflower) - 1))+
+  ggplot(aes(x = log.ros.area, y = as.numeric(pflower) - 1))+
     geom_jitter(alpha= 0.2, shape = 1, height = 0.075)+
-    geom_line(data = pred.dat.output.pf, aes(x = log.ros.area.prev, y = pflower, color = trt), linewidth = 1.5)+
+    geom_line(data = pred.dat.output.pf, aes(x = log.ros.area, y = pflowerT1, color = trt), linewidth = 1.5)+
   scale_color_manual(values = c("#e54e21", "#9fb764", "#3088a3"))+
-  labs(x = "log(Rosette Area) in t-1", y = "P(flowering) in t", color = "")+
+  labs(x = "log(Rosette Area) in t", y = "P(flowering) in t + 1", color = "")+
     scale_x_continuous(limits = c(0, 6),breaks = seq(0, 6, by = 1),expand = c(0, 0))+
-  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.15, 0.9)))
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.15, 0.7)))
 
  
  
@@ -279,17 +388,31 @@ ggsave(here("Figures", "Primula", "pflower.png"), plot = pflower.fig, width = 6,
 ```
 
 ```{r no flowers prequel}
-nf <- glmer(flow.sum ~ log.ros.area.prev + (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
-base.pan <- glmer(flow.sum ~ log.ros.area.prev*year + (1|plot) , data = subset(primula, flow.sum>0), family = "poisson", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
-drop1(base.pan,test="Chisq") #no, ditch size*climate interactions
-# base.p2 <- glmer(flow.sumT1 ~ log.ros.area+year + (1|plot), data = subset(primula, no.flowersT1>0), family = "poisson", control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
-base.p3 <- glmer(flow.sum ~ log.ros.area.prev + year+ (1|plot), data = subset(primula, flow.sum>0), family = "poisson")
- a2 <- anova(nf, base.p3, test="LRT") #yes year is significant. So just no size: climate interactions
+
+
+table(primula$year[primula$pflowerT1 == "1"])
+nf <- glmer(flow.sumT1 ~ log.ros.area + (1|plot) + (1|year),
+                  data = subset(primula, flow.sumT1>0),
+                  family = poisson)
+# base.pan <- glmer(flow.sumT1 ~ log.ros.area*year + (1|plot),
+#                         data = subset(primula, flow.sumT1>0),
+#                         family = poisson)
+# 
+# drop1(base.pan, test = "Chisq")
+
+base.pan1 <- glmer(flow.sumT1 ~ log.ros.area + (1|plot),
+                        data = subset(primula, flow.sumT1>0),
+                        family = poisson)
+base.pan2 <- glmer(flow.sumT1 ~ log.ros.area + year + (1|plot),
+                        data = subset(primula, flow.sumT1>0),
+                        family = poisson)
+a2 <- anova(base.pan1, base.pan2, test="LRT") #yes year is significant, but the interaction model did not converge. So, just keep models with out the size*climate term
+
 
 re_year <- rownames_to_column(
   as.data.frame(ranef(nf)$year),
   var = "year") %>% 
-  mutate(year = as.numeric(year))%>% 
+  mutate(year = as.numeric(year)) %>% 
   rename(int = `(Intercept)`)
 
 flower.corr <- left_join(re_year, climate) %>% 
@@ -309,51 +432,120 @@ cor_results <- lapply(names(flower.corr), function(v) {
 # Combine into one data frame
 cor_results_flower <- do.call(rbind, cor_results)
 
-#prev_winter.mean.min.temp
+#winter.mean.min.temp
+#prev_winter.tot.precip
+#prev_winter.mean.max.temp
+#fall.mean.min.temp
+
 ```
 
 ```{r number of flowers}
-nf <- glmer(flow.sum ~ log.ros.area.prev + (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
-nf.base <-  glmer(flow.sum ~ 1 + (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
-nf.t <-  glmer(flow.sum ~ log.ros.area.prev+trt + (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
-nf.ti <-  glmer(flow.sum ~ log.ros.area.prev*trt + (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
 
-##
-nf.wt <-  glmer(flow.sum ~ log.ros.area.prev + prev_winter.mean.min.temp	+(1|plot) + (1|year), data= subset(primula, flow.sum>0), family = "poisson")
-#nf.wtint <-  glmer(flow.sumT1 ~ log.ros.area*winter.mean.temp+(1|plot) + (1|year), data=subset(primula, no.flowersT1>0), family = "poisson")
-nf.wtint.trt <-  glmer(flow.sum ~ log.ros.area.prev + prev_winter.mean.min.temp	+trt+(1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
-#nf.wt.tint1 <-  glmer(flow.sumT1 ~ log.ros.area*winter.mean.temp+trt+ (1|plot) + (1|year), data = subset(primula, no.flowersT1>0), family = "poisson")
-nf.wt.tint2 <-  glmer(flow.sum ~ log.ros.area.prev+prev_winter.mean.min.temp	*trt+ (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
-nf.wt.tint3 <-  glmer(flow.sum ~ log.ros.area.prev*trt +prev_winter.mean.min.temp	 + (1|plot) + (1|year), data = subset(primula, flow.sum>0), family = "poisson")
+nf <- glmer(flow.sumT1 ~ log.ros.area + (1|plot) + (1|year), 
+              data = subset(primula, flow.sumT1>0), family = poisson)
+nf.base <- glmer(flow.sumT1 ~ 1 + (1|plot) + (1|year), 
+                    data = subset(primula, flow.sumT1>0), family = poisson)
+nf.t <- glmer(flow.sumT1 ~ log.ros.area + trt + (1|plot) + (1|year), 
+                 data = subset(primula, flow.sumT1>0), family = poisson)
+nf.ti <- glmer(flow.sumT1 ~ log.ros.area*trt + (1|plot) + (1|year), 
+                  data = subset(primula, flow.sumT1>0), family = poisson)
 
+##winter.mean.min.temp
+nf.wtt <- glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp + (1|plot) + (1|year), 
+                  data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtt.q <- glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp + I(winter.mean.min.temp^2) + (1|plot) + (1|year), 
+                     data = subset(primula,flow.sumT1>0), family = poisson)
+nf.wttint.trt <- glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp + trt + (1|plot) + (1|year), 
+                          data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtt.tint2 <- glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtt.tint3 <- glmer(flow.sumT1 ~ log.ros.area*trt + winter.mean.min.temp + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtt.tint4 <- glmer(flow.sumT1 ~ log.ros.area*trt + winter.mean.min.temp*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+
+#prev_winter.tot.precip
+nf.wtp <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.tot.precip + (1|plot) + (1|year), 
+                  data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtp.q <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.tot.precip + I(prev_winter.tot.precip^2) + (1|plot) + (1|year), 
+                     data = subset(primula,flow.sumT1>0), family = poisson)
+nf.wtpint.trt <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.tot.precip + trt + (1|plot) + (1|year), 
+                          data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtp.tint2 <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.tot.precip*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtp.tint3 <- glmer(flow.sumT1 ~ log.ros.area*trt + prev_winter.tot.precip + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.wtp.tint4 <- glmer(flow.sumT1 ~ log.ros.area*trt + prev_winter.tot.precip*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+
+#prev_winter.mean.max.temp
+nf.fp <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.mean.max.temp + (1|plot) + (1|year), 
+                  data = subset(primula, flow.sumT1>0), family = poisson)
+nf.fp.q <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.mean.max.temp + I(prev_winter.mean.max.temp^2) + (1|plot) + (1|year), 
+                     data = subset(primula,flow.sumT1>0), family = poisson)
+nf.fpint.trt <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.mean.max.temp + trt + (1|plot) + (1|year), 
+                          data = subset(primula, flow.sumT1>0), family = poisson)
+nf.fp.tint2 <- glmer(flow.sumT1 ~ log.ros.area + prev_winter.mean.max.temp*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.fp.tint3 <- glmer(flow.sumT1 ~ log.ros.area*trt + prev_winter.mean.max.temp + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.fp.tint4 <- glmer(flow.sumT1 ~ log.ros.area*trt + prev_winter.mean.max.temp*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+
+#fall.mean.min.temp
+nf.ft <- glmer(flow.sumT1 ~ log.ros.area + fall.mean.min.temp + (1|plot) + (1|year), 
+                  data = subset(primula, flow.sumT1>0), family = poisson)
+nf.ft.q <- glmer(flow.sumT1 ~ log.ros.area + fall.mean.min.temp + I(fall.mean.min.temp^2) + (1|plot) + (1|year), 
+                     data = subset(primula,flow.sumT1>0), family = poisson)
+nf.ftint.trt <- glmer(flow.sumT1 ~ log.ros.area + fall.mean.min.temp + trt + (1|plot) + (1|year), 
+                          data = subset(primula, flow.sumT1>0), family = poisson)
+nf.ft.tint2 <- glmer(flow.sumT1 ~ log.ros.area + fall.mean.min.temp*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.ft.tint3 <- glmer(flow.sumT1 ~ log.ros.area*trt + fall.mean.min.temp + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
+nf.ft.tint4 <- glmer(flow.sumT1 ~ log.ros.area*trt + fall.mean.min.temp*trt + (1|plot) + (1|year), 
+                         data = subset(primula, flow.sumT1>0), family = poisson)
 
 number.flower <- mget(ls(pattern = "^nf"))
-number.flower_AICc<-aictab(cand.set = number.flower,second.ord=TRUE,nobs=NULL,sort=TRUE)
+# check convergence for each model (leaves singular fits in)
+converged <- sapply(number.flower, function(m) {
+  msgs <- m@optinfo$conv$lme4$messages
+  # no messages at all -> fine
+  if (is.null(msgs)) return(TRUE)
+  # only messages present are singular-fit warnings -> still fine
+  all(grepl("singular", msgs, ignore.case = TRUE))
+})
 
-number.flower_AICc <- number.flower_AICc %>% 
-  arrange(AICc) %>% 
-  slice_head(n = 10)
-number.flower_AICc$vitalrate <- "number.flowers"
-#AIC.save <- bind_rows(AIC.save, number.flower_AICc)
+# keep only converged models
+number.flower_ok <- number.flower[converged]
+
+# see which ones got dropped, if any
+names(number.flower)[!converged]
+
+number.flower_AICc <- aictab(cand.set = number.flower_ok, modnames = names(number.flower_ok), second.ord = TRUE, nobs = NULL, sort = TRUE)
+
+number.flower_AICc<-aictab(cand.set = number.flower,second.ord=TRUE,nobs=NULL,sort=TRUE)
+#rm(list = ls(pattern = "^nf\\."))
+
 summary(nf.wt)
 ```
 
 ```{r}
-summary(nf) 
-pred.dat <- expand.grid(log.ros.area.prev = seq(2, max(primula$log.ros.area.prev, na.rm = TRUE), by = .1),  prev_winter.mean.min.temp = c(2, -2))
-pred.dat.output <- cbind(pred.dat, as.data.frame(predict(nf.wt, newdata = pred.dat, type="response", re.form=~0, pred.var=TRUE)))
-colnames(pred.dat.output)[ncol(pred.dat.output)] <- "flow.sum"  # Renaming the last column
+summary(nf.wtt) 
+pred.dat <- expand.grid(log.ros.area = seq(2, max(primula$log.ros.area, na.rm = TRUE), by = .1),  winter.mean.min.temp = c(1, -1))
+pred.dat.output <- cbind(pred.dat, as.data.frame(predict(nf.wtt, newdata = pred.dat, type="response", re.form=~0, pred.var=TRUE)))
+colnames(pred.dat.output)[ncol(pred.dat.output)] <- "flow.sumT1"  # Renaming the last column
 
 (noflow.fig <- primula %>% 
-        filter(flow.sum>0) %>%
-  ggplot(aes(x = log.ros.area.prev, y = flow.sum))+
+        filter(flow.sumT1>0) %>%
+  ggplot(aes(x = log.ros.area, y = flow.sumT1))+
   geom_point(alpha= 0.2, shape = 1)+
-  geom_line(data = pred.dat.output, aes(x = log.ros.area.prev, y = flow.sum, color = as.factor(prev_winter.mean.min.temp)), linewidth = 1.5)+
+  geom_line(data = pred.dat.output, aes(x = log.ros.area, y = flow.sum, color = as.factor(winter.mean.min.temp)), linewidth = 1.5)+
    theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, 0.9))+
   scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+        
   scale_y_continuous(limits = c(0, NA), breaks = seq(0, ceiling(max(primula$flow.sum, na.rm = TRUE)), by = 1)) +
-  labs(x = "log(Rosette Area) in t-1", y = "Number of flowers in t",  color = "" )+
-      scale_color_manual(name = "Winter temp, t-1", values = c("#90d4cc", "#bd3027"), labels = c("cool", "warm")) )
+  labs(x = "log(Rosette Area) in t", y = "Number of flowers in t + 1",  color = "" )+
+      scale_color_manual(name = "Winter temp, t", values = c("#90d4cc", "#bd3027"), labels = c("cool", "warm")) )
 
 ggsave(here("Figures", "Primula", "no.flowers.png"), plot = noflow.fig, width = 6, height =6)
 
@@ -396,51 +588,117 @@ cor_results_surv <- do.call(rbind, cor_results)
 # Sort by absolute correlation
 cor_results_surv <- cor_results_surv[order(-abs(cor_results_surv$correlation)), ]
 cor_results_surv
-#none!
 
+p.unique <- primula.surv %>%
+  ungroup() |> 
+  distinct(year, .keep_all = TRUE)
+cor.test(p.unique$prev_fall.mean.max.temp, p.unique$spring.mean.temp)
 ```
 
 ```{r survival}
-sm <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
-sm.t <-  glmer(psurvivalT1 ~ log.ros.area + trt + (1|plot) + (1|year), data = primula, family = "binomial")
-sm.ti <-  glmer(psurvivalT1 ~ log.ros.area*trt + (1|plot) + (1|year), data =primula, family = "binomial")
+sm <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.t <-  glmer(psurvivalT1 ~ log.ros.area + trt + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.ti <-  glmer(psurvivalT1 ~ log.ros.area*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
 
-sm.st <- glmer(psurvivalT1 ~ log.ros.area + spring.mean.temp + (1|plot) + (1|year), data = primula, family = "binomial")
-sm.st.i <- glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, family = "binomial")
+sm.st <- glmer(psurvivalT1 ~ log.ros.area + spring.mean.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.st.q <- glmer(psurvivalT1 ~ log.ros.area + spring.mean.temp + I(spring.mean.temp^2) + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.st.i <- glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.t.st <-  glmer(psurvivalT1 ~ log.ros.area + trt + spring.mean.temp +  (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.ti.st <-  glmer(psurvivalT1 ~ log.ros.area*trt + spring.mean.temp+ (1|plot) + (1|year), data =primula.surv, family = "binomial")
+sm.st.ti <-  glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
+sm.st.ti2 <-  glmer(psurvivalT1 ~ log.ros.area + spring.mean.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
+sm.st.ti3 <-  glmer(psurvivalT1 ~ log.ros.area*trt + spring.mean.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
 
-sm.t.st <-  glmer(psurvivalT1 ~ log.ros.area + trt + spring.mean.temp +  (1|plot) + (1|year), data = primula, family = "binomial")
-sm.ti.st <-  glmer(psurvivalT1 ~ log.ros.area*trt + spring.mean.temp+ (1|plot) + (1|year), data =primula, family = "binomial")
-sm.st.ti <-  glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + trt + (1|plot) + (1|year), data =primula, family = "binomial")
+#prev_fall.mean.max.temp
+sm.ft <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.ft.q <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp + I(prev_fall.mean.max.temp^2) + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.ft.i <- glmer(psurvivalT1 ~ log.ros.area*prev_fall.mean.max.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.t.ft <-  glmer(psurvivalT1 ~ log.ros.area + trt + prev_fall.mean.max.temp +  (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.ti.ft <-  glmer(psurvivalT1 ~ log.ros.area*trt + prev_fall.mean.max.temp+ (1|plot) + (1|year), data =primula.surv, family = "binomial")
+sm.ft.ti <-  glmer(psurvivalT1 ~ log.ros.area*prev_fall.mean.max.temp + trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
+sm.ft.ti2 <-  glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
+sm.ft.ti3 <-  glmer(psurvivalT1 ~ log.ros.area*trt + prev_fall.mean.max.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
 
+#both
+# prev_fall.mean.max.temp – spring.mean.temp
+sm.s <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp + spring.mean.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.s.q1 <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp + spring.mean.temp + I(prev_fall.mean.max.temp^2) + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.s.q2 <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp + spring.mean.temp + I(spring.mean.temp^2) + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.s.int <- glmer(psurvivalT1 ~ log.ros.area*prev_fall.mean.max.temp + spring.mean.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.s.int2 <- glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + prev_fall.mean.max.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.strt <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp + trt + spring.mean.temp+(1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.strt.int <- glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp*trt +spring.mean.temp+ (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.strt.int2 <- glmer(psurvivalT1 ~ log.ros.area + spring.mean.temp*trt +prev_fall.mean.max.temp+ (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.strt.int3 <- glmer(psurvivalT1 ~ log.ros.area*prev_fall.mean.max.temp+trt+spring.mean.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.strt.int4 <- glmer(psurvivalT1 ~ log.ros.area*spring.mean.temp + prev_fall.mean.max.temp + trt + (1|plot) + (1|year), data = primula.surv, family = "binomial")
+sm.s.trt.int6 <- glmer(psurvivalT1 ~ log.ros.area*trt+spring.mean.temp + prev_fall.mean.max.temp + (1|plot) + (1|year), data = primula.surv, family = "binomial")
 
 prob.survival <- mget(ls(pattern = "^sm"))
 psurvival_AICc<-aictab(cand.set = prob.survival,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
-psurvival_AICc <- psurvival_AICc %>% 
-  arrange(AICc) %>% 
-  slice_head(n = 10)
-psurvival_AICc$vitalrate <- "psurvival"
-AIC.save <- bind_rows(AIC.save, psurvival_AICc)
 
+summary(sm.ft.ti2)
 ```
+```{r save survival}
+surv_AICc2 <- psurvival_AICc |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
+  arrange(AICc)
 
+get_fixed_formula <- function(m) {
+  f <- formula(m)
+  rhs <- deparse(f[[3]], width.cutoff = 500)
+  rhs <- paste(rhs, collapse = "")
+  rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
+  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
+  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
+  trimws(rhs)
+}
+
+fixed_formulas <- sapply(prob.survival, get_fixed_formula)
+
+surv_AICc2$fixed_effects <- fixed_formulas[surv_AICc2$Modnames]
+
+
+survival.d <- surv_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+  relocate(fixed_effects, .before =1) |> 
+  select(c(1, 3, 4, 5))
+  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
+
+survival.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.survival.docx"))
+
+#save the best fit model
+summary(sm.ft.ti2)
+coefs <- summary(sm.ft.ti2)$coefficients
+
+s.coef <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"]
+)
+
+write.csv(s.coef, here("Tables", "Primula", "primula_survival_best_fit_coeff.csv"), row.names = F)
+```
 
 ```{r survival figure}
 
-pred.dat.s <- expand.grid(log.ros.area = seq(min(primula$log.ros.area, na.rm = TRUE), max(primula$log.ros.area, na.rm = TRUE), by = .1))
-pred.dat.output.s <- cbind(pred.dat.s, as.data.frame(predict(sm, newdata = pred.dat.s, type="response", re.form=~0, pred.var=TRUE)))
+pred.dat.s <- expand.grid(log.ros.area = seq(min(primula.surv$log.ros.area, na.rm = TRUE), max(primula.surv$log.ros.area, na.rm = TRUE), by = .1), trt = c("drought", "control", "irrigated"), prev_fall.mean.max.temp = c(1, -1))
+pred.dat.output.s <- cbind(pred.dat.s, as.data.frame(predict(sm.ft.ti2, newdata = pred.dat.s, type="response", re.form=~0, pred.var=TRUE)))
 colnames(pred.dat.output.s)[ncol(pred.dat.output.s)] <- "psurvivalT1"  # Renaming the last column
 
 
-(surv.fig <- ggplot(primula, aes(x = log.ros.area, y = as.numeric(psurvivalT1) - 1))+
-  geom_jitter(alpha= 0.2, shape = 1, height = .075)+
-  geom_line(data = pred.dat.output.s, aes(x = log.ros.area, y = psurvivalT1), linewidth = 1.15)+
-  scale_x_continuous(limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+
-      theme(axis.line = element_line(colour = 'black', linewidth = 1.1),
-        text = element_text(size = 20))+ 
-      labs(y = "P(survival) in t+1", x = "log(Rosette Area) in t"))
+(surv.fig <- ggplot(primula.surv, aes(x = log.ros.area, 
+                                       y = as.numeric(as.character(psurvivalT1)))) +
+  geom_jitter(alpha = 0.2, shape = 1, height = .075) +
+  geom_line(data = pred.dat.output.s, aes(color = factor(prev_fall.mean.max.temp)), linewidth = 1.5) +
+  scale_y_continuous(limits = c(-.2, 1.2), breaks = seq(0, 1, by = .2), expand = c(0, 0)) +
+  scale_color_manual(name = "Fall temp, t-1", values = c("#71250E", "#EB781B"), labels = c("cool", "warm")) +
+  theme(axis.line = element_line(colour = 'black', linewidth = 1.1),
+        text = element_text(size = 20)) + 
+  facet_wrap(~trt) +
+  labs(y = "P(survival) in t+1", x = "log(Rosette Area) in t"))
 
-ggsave(here("Figures", "Primula", "survival.png"), plot = surv.fig, width = 6, height =6)
+ggsave(here("Figures", "Primula", "survival.png"), plot = surv.fig, width = 8, height =4)
 ```
 
 ```{r probabilty of clones}
@@ -453,11 +711,46 @@ probc4 <- glmer(pclonal ~ log.ros.area*trt+ (1|plot) + (1|year), data = clonal, 
 pclone <- mget(ls(pattern = "^probc"))
 pclone_AICc<-aictab(cand.set = pclone,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
-pclone_AICc <- pclone_AICc %>% 
-  arrange(AICc) %>% 
-  slice_head(n = 10)
-pclone_AICc$vitalrate <- "pclonal"
-#AIC.save <- bind_rows(AIC.save, pclone_AICc)
+```
+```{r save clonal}
+pclone_AICc2 <- pclone_AICc |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
+  arrange(AICc)
+
+get_fixed_formula <- function(m) {
+  f <- formula(m)
+  rhs <- deparse(f[[3]], width.cutoff = 500)
+  rhs <- paste(rhs, collapse = "")
+  rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
+  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
+  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
+  trimws(rhs)
+}
+
+fixed_formulas <- sapply(pclone, get_fixed_formula)
+
+pclone_AICc2$fixed_effects <- fixed_formulas[pclone_AICc2$Modnames]
+
+
+survival.d <- pclone_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+  relocate(fixed_effects, .before =1) |> 
+  select(c(1, 3, 4, 5))
+  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
+
+survival.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.clonal.docx"))
+
+#save the best fit model
+summary(probc2)
+coefs <- summary(probc2)$coefficients
+
+s.coef <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"]
+)
+
+write.csv(s.coef, here("Tables", "Primula", "primula_clonal_best_fit_coeff.csv"), row.names = F)
 ```
 
 ```{r probability of clones figure}
@@ -488,10 +781,46 @@ no_clones4 <- glmer(no.smleaf ~ log.ros.area*trt + (1|plot) + (1|year), data = l
 no.clones <- mget(ls(pattern = "^no_clones"))
 no.clones_AICc<-aictab(cand.set = no.clones,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
-no.clones_AICc <- no.clones_AICc %>% 
-  arrange(AICc) 
-pclone_AICc$vitalrate <- "no.clones"
-AIC.save <- bind_rows(AIC.save, no.clones_AICc)
+```
+```{r save clonal}
+no.clones_AICc2 <- no.clones_AICc |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
+  arrange(AICc)
+
+get_fixed_formula <- function(m) {
+  f <- formula(m)
+  rhs <- deparse(f[[3]], width.cutoff = 500)
+  rhs <- paste(rhs, collapse = "")
+  rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
+  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
+  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
+  trimws(rhs)
+}
+
+fixed_formulas <- sapply(no.clones, get_fixed_formula)
+
+no.clones_AICc2$fixed_effects <- fixed_formulas[no.clones_AICc2$Modnames]
+
+
+survival.d <- no.clones_AICc2 %>% 
+  rename(Model = Modnames) %>% 
+  relocate(fixed_effects, .before =1) |> 
+  select(c(1, 3, 4, 5))
+  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
+
+survival.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.clones.docx"))
+
+#save the best fit model
+summary(no_clones2)
+coefs <- summary(no_clones2)$coefficients
+
+s.coef <- data.frame(
+  Term = rownames(coefs),
+  Estimate = coefs[, "Estimate"],
+  SE = coefs[, "Std. Error"]
+)
+
+write.csv(s.coef, here("Tables", "Primula", "primula_clones_best_fit_coeff.csv"), row.names = F)
 ```
 
 ```{r no clones fig}
@@ -515,7 +844,8 @@ ggsave(here("Figures", "Primula", "no.bulblets.png"), plot = nc.fig, width = 6, 
 
 ```{r all together!}
 
-(all <- (growth.fig+ pflower.fig + pc.fig)/ (surv.fig+ noflow.fig+ nc.fig) +plot_layout( axis_titles= 'collect')+
+(all <- (gr.fig)/(surv.fig)/
+   (noflow.fig+pflower.fig )/ (pc.fig+ nc.fig ) +plot_layout( axis_titles= 'collect')+
     plot_annotation(tag_levels = "A", tag_suffix = ")")&
   theme(
     legend.title = element_text(size = 11),
@@ -524,7 +854,7 @@ ggsave(here("Figures", "Primula", "no.bulblets.png"), plot = nc.fig, width = 6, 
   legend.key = element_rect(fill = NA, colour = NA)
   )
 )
-ggsave(here("Figures", "Primula", "all.png"), plot = all, width = 15, height =10)
+ggsave(here("Figures", "Primula", "all.png"), plot = all, width =12, height =17)
 
 
 ```

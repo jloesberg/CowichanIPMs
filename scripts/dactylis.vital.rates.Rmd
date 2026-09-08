@@ -280,29 +280,6 @@ gm.summer.p.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+summer.tot.precip
 gm.summer.p.trt.int3 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
 gm.summer.q <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + I(summer.tot.precip^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
 
-# 
-# #prev_summer.tot.precip
-# gm.psummer.p <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.psummer.p.trt <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + trt + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.psummer.p.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.psummer.p.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.psummer.q <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip + I(prev_summer.tot.precip^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
-# 
-# #summer.mean.max.temp
-# gm.summer.t <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.summer.t.trt <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + trt + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.summer.t.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.summer.t.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems*trt+summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.summer.t.q <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + I(summer.mean.max.temp^2) + (1|Plot) + (1|Year), data = dac, REML = F)
-# 
-# #"spring.mean.min.temp" "summer.mean.max.temp"
-# gm.su.sp.t <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.mean.max.temp + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.t1 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.mean.max.temp + I(spring.mean.min.temp^2) +(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.t2 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.mean.max.temp + I(summer.mean.max.temp^2) +(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.trt.t <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + trt + summer.mean.max.temp+(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.trt.int.t <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp*trt +summer.mean.max.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.trt.int2.t <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp*trt +spring.mean.min.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
-# 
 # #"summer.tot.precip"    "spring.mean.min.temp"
 gm.su.sp <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
 gm.su.sp1 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + summer.tot.precip + I(summer.tot.precip^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
@@ -312,31 +289,6 @@ gm.su.sp.trt.int <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp*tr
 gm.su.sp.trt.int2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip*trt +spring.mean.min.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
 gm.su.sp.trt.int3 <- lmer(log.no.stemsT1 ~ log.no.stems*trt + summer.tot.precip*trt +spring.mean.min.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
 gm.su.sp.trt.int4 <- lmer(log.no.stemsT1 ~ log.no.stems*trt + summer.tot.precip +spring.mean.min.temp*trt+ (1|Plot) + (1|Year), data = dac, REML = F)
-
-# 
-# ##"spring.mean.min.temp"   "prev_summer.tot.precip"
-# gm.su.sp.p <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.p1 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + prev_summer.tot.precip + I(prev_summer.tot.precip^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.p2 <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + prev_summer.tot.precip + I(spring.mean.min.temp^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.trt.p <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp + trt + prev_summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.trt.int.p <- lmer(log.no.stemsT1 ~ log.no.stems + spring.mean.min.temp*trt +prev_summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.su.sp.trt.int2.p <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt +spring.mean.min.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
-# 
-# ##"summer.tot.precip"      "prev_summer.tot.precip"
-# gm.3.1 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.3.1.1 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + prev_summer.tot.precip + I(prev_summer.tot.precip^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.3.1.2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + prev_summer.tot.precip + I(summer.tot.precip^2)+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.3.2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip + trt + prev_summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.3.3 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.tot.precip*trt +prev_summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.3.4 <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt +summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
-# 
-# ##"prev_summer.tot.precip" "summer.mean.max.temp"  
-# gm.4.1 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + prev_summer.tot.precip + (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.4.1.1 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + prev_summer.tot.precip +  I(prev_summer.tot.precip^2)+(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.4.1.2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + prev_summer.tot.precip +  I(summer.mean.max.temp^2)+(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.4.2 <- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp + trt + prev_summer.tot.precip+(1|Plot) + (1|Year), data = dac, REML = F)
-# gm.4.3<- lmer(log.no.stemsT1 ~ log.no.stems + summer.mean.max.temp*trt +prev_summer.tot.precip+ (1|Plot) + (1|Year), data = dac, REML = F)
-# gm.4.4 <- lmer(log.no.stemsT1 ~ log.no.stems + prev_summer.tot.precip*trt +summer.mean.max.temp+ (1|Plot) + (1|Year), data = dac, REML = F)
 
 ################################################################################
 ###
@@ -358,8 +310,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -372,7 +322,6 @@ growth.d <- growth_AICc2 %>%
   rename(Model = Modnames) %>% 
   relocate(fixed_effects, .before =1) |> 
   select(c(1, 3, 4, 5))
-  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
 
 growth.d %>% gt() %>% gtsave(here("Tables", "Dactylis", "Dactylis.AIC.table.growth.docx"))
 
@@ -503,9 +452,7 @@ fm.prev_spring.mean.temp.trt <- glmer(pflowerT ~ log.no.stems + prev_spring.mean
 fm.prev_spring.mean.temptrt.int <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
 fm.prev_spring.mean.temptrt.int2 <- glmer(pflowerT ~ log.no.stems*trt + prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
 fm.prev_spring.mean.temptrt.int3 <- glmer(pflowerT ~ log.no.stems*trt + prev_spring.mean.temp*trt+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-
 #fm.prev_spring.mean.temptrt.int3 <- glmer(pflowerT ~ log.no.stems*prev_spring.mean.temp+ trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-
 
 #prev_winter.mean.max.temp
 fm.prev_winter.mean.temp <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
@@ -514,59 +461,6 @@ fm.prev_winter.mean.temp.trt <- glmer(pflowerT ~ log.no.stems + prev_winter.mean
 fm.prev_winter.mean.temp.trt.int1 <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.max.temp*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
 fm.prev_winter.mean.temp.trt.int2 <- glmer(pflowerT ~ log.no.stems*trt + prev_winter.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
 fm.prev_winter.mean.temp.trt.int3 <- glmer(pflowerT ~ log.no.stems*trt + prev_winter.mean.max.temp*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-
-#fm.prev_winter.mean.temp.trt.int3 <- glmer(pflowerT ~ log.no.stems*prev_winter.mean.max.temp + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-
-# # 
-# #spring.tot.precip
-# fm.spp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.spp.q <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + I(spring.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.spp.t <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.spp.ti1 <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.spp.ti2 <- glmer(pflowerT ~ log.no.stems*trt + spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# #fm.spp.ti3 <- glmer(pflowerT ~ log.no.stems*spring.tot.precip + trt +  (1|Plot) + (1|Year), data = dac, family = "binomial")
-# 
-# 
-# #prev_winter.tot.precip
-# fm.prev_winter.p <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.prev_winter.pq <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip + I(prev_winter.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.prev_winter.p.trt <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip + trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.prev_winter.p.trt.int1 <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip*trt + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.prev_winter.p.trt.int2 <- glmer(pflowerT ~ log.no.stems*trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# #fm.prev_winter.p.trt.int3 <- glmer(pflowerT ~ log.no.stems*prev_winter.tot.precip +trt +  (1|Plot) + (1|Year), data = dac, family = "binomial")
-# 
-# # 
-# "prev_winter.tot.precip" "spring.tot.precip"  
-# fm.wt.sp.p <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.pq1 <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.tot.precip + I(prev_winter.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.pq2 <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.tot.precip + I(spring.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.p <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + trt + prev_winter.tot.precip+(1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.int.p <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt +prev_winter.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.int2.p <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# 
-# # "prev_winter.mean.max.temp" "spring.tot.precip"  
-# fm.wt.sp.p.tp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.mean.max.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.p.tpq1 <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.mean.max.temp + I(prev_winter.mean.max.temp^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.p.tpq2 <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + prev_winter.mean.max.temp + I(spring.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.p.tp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip + trt + prev_winter.mean.max.temp+(1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.int.p.tp <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt +prev_winter.mean.max.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.int2.p.tp <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.max.temp*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# 
-# # "prev_spring.mean.temp" "spring.tot.precip"
-# fm.st.sp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + spring.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.st.spq1 <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + spring.tot.precip + I(spring.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.st.spq2 <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + spring.tot.precip + I(prev_spring.mean.temp^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.st.sp.trt <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + trt + spring.tot.precip+(1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.st.sp.trt.int <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.st.sp.trt.int2 <- glmer(pflowerT ~ log.no.stems + spring.tot.precip*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# 
-# # #"prev_spring.mean.temp"  "prev_winter.tot.precip"
-# fm.wt.sp.tp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.tpq1 <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + I(prev_winter.tot.precip^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.tpq2 <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + I(prev_spring.mean.temp^2) + (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.tp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp + trt + prev_winter.tot.precip+(1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.int.tp <- glmer(pflowerT ~ log.no.stems + prev_spring.mean.temp*trt +prev_winter.tot.precip+ (1|Plot) + (1|Year), data = dac, family = "binomial")
-# fm.wt.sp.trt.int2.tp <- glmer(pflowerT ~ log.no.stems + prev_winter.tot.precip*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac, family = "binomial")
 
 #"prev_winter.mean.max.temp" "prev_winter.tot.precip"   
 fm.wt.wp.tp <- glmer(pflowerT ~ log.no.stems + prev_winter.mean.max.temp + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac, family = "binomial")
@@ -752,77 +646,7 @@ sm.prev_spring.ptrt.int2 <- glmer(survT1 ~ log.no.stems*trt + spring.tot.precip+
 sm.prev_spring.ptrt.int3 <- glmer(survT1 ~ log.no.stems*spring.tot.precip+trt +  (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 sm.prev_spring.ptrt.int3 <- glmer(survT1 ~ log.no.stems*trt +spring.tot.precip*trt +  (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 
-#fall
-# sm.fall.p <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fall.pq <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + I(prev_fall.tot.precip^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fall.p.int <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fall.p.trt <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fall.p.trt.int <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fall.p.trt.int2 <- glmer(survT1 ~ log.no.stems*trt + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fall.p.trt.int3 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# 
-# 
-# #summer.mean.temp
-# sm.summer.mean.temp <- glmer(survT1 ~ log.no.stems + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.summer.mean.tempq <- glmer(survT1 ~ log.no.stems + summer.mean.temp + I(summer.mean.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.summer.mean.temp.int <- glmer(survT1 ~ log.no.stems*summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.summer.mean.temp.trt <- glmer(survT1 ~ log.no.stems + summer.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.summer.mean.temp.trt.int <- glmer(survT1 ~ log.no.stems + summer.mean.temp*trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.summer.mean.temp.trt.int2 <- glmer(survT1 ~ log.no.stems*trt + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.summer.mean.temp.trt.int3 <- glmer(survT1 ~ log.no.stems*summer.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# 
-# 
-# # summer.mean.temp – prev_fall.tot.precip
-# sm.sfp <- glmer(survT1 ~ log.no.stems + summer.mean.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfp.q1 <- glmer(survT1 ~ log.no.stems + summer.mean.temp + prev_fall.tot.precip + I(summer.mean.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfp.q2 <- glmer(survT1 ~ log.no.stems + summer.mean.temp + prev_fall.tot.precip + I(prev_fall.tot.precip^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfp.int <- glmer(survT1 ~ log.no.stems*summer.mean.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfp.int2 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfptrt <- glmer(survT1 ~ log.no.stems + summer.mean.temp + trt + prev_fall.tot.precip+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# #sm.sfptrt.int <- glmer(survT1 ~ log.no.stems + summer.mean.temp*trt +prev_fall.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfptrt.int2 <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt +summer.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfptrt.int3 <- glmer(survT1 ~ log.no.stems*summer.mean.temp+trt+prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfptrt.int4 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + summer.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sfp.trt.int6 <- glmer(survT1 ~ log.no.stems*trt + prev_fall.tot.precip + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# 
-# # summer.mean.temp – winter.mean.max.temp
-# sm.w <- glmer(survT1 ~ log.no.stems + summer.mean.temp + winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.w.q1 <- glmer(survT1 ~ log.no.stems + summer.mean.temp + winter.mean.max.temp + I(summer.mean.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.w.q2 <- glmer(survT1 ~ log.no.stems + summer.mean.temp + winter.mean.max.temp + I(winter.mean.max.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.w.int <- glmer(survT1 ~ log.no.stems*summer.mean.temp + winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.w.int2 <- glmer(survT1 ~ log.no.stems*winter.mean.max.temp + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.wtrt <- glmer(survT1 ~ log.no.stems + summer.mean.temp + trt + winter.mean.max.temp+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.wtrt.int <- glmer(survT1 ~ log.no.stems + summer.mean.temp*trt +winter.mean.max.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.wtrt.int2 <- glmer(survT1 ~ log.no.stems + winter.mean.max.temp*trt +summer.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.wtrt.int3 <- glmer(survT1 ~ log.no.stems*summer.mean.temp+trt+winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.wtrt.int4 <- glmer(survT1 ~ log.no.stems*winter.mean.max.temp + summer.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.w.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+winter.mean.max.temp + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 
-# # summer.mean.temp – spring.tot.precip
-# sm.sp <- glmer(survT1 ~ log.no.stems + summer.mean.temp + spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sp.q1 <- glmer(survT1 ~ log.no.stems + summer.mean.temp + spring.tot.precip + I(summer.mean.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sp.q2 <- glmer(survT1 ~ log.no.stems + summer.mean.temp + spring.tot.precip + I(spring.tot.precip^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sp.int <- glmer(survT1 ~ log.no.stems*summer.mean.temp + spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sp.int2 <- glmer(survT1 ~ log.no.stems*spring.tot.precip + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sptrt <- glmer(survT1 ~ log.no.stems + summer.mean.temp + trt + spring.tot.precip+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sptrt.int <- glmer(survT1 ~ log.no.stems + summer.mean.temp*trt +spring.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sptrt.int2 <- glmer(survT1 ~ log.no.stems + spring.tot.precip*trt +summer.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sptrt.int3 <- glmer(survT1 ~ log.no.stems*summer.mean.temp+trt+spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sptrt.int4 <- glmer(survT1 ~ log.no.stems*spring.tot.precip + summer.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sp.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+spring.tot.precip + summer.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-
-# # prev_spring.mean.temp – prev_fall.tot.precip
-# sm.sppt <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.spptq1 <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + prev_fall.tot.precip + I(prev_spring.mean.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.spptq2 <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + prev_fall.tot.precip + I(prev_fall.tot.precip^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppt.int <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppt.int2 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppttrt <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + trt + prev_fall.tot.precip+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppttrt.int <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp*trt +prev_fall.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppttrt.int2 <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt +prev_spring.mean.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppttrt.int3 <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp+trt+prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppttrt.int4 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.sppt.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+prev_fall.tot.precip + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 
 # prev_spring.mean.temp – winter.mean.max.temp
 sm.wt.sp <- glmer(survT1 ~ log.no.stems + prev_spring.mean.temp + winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
@@ -849,19 +673,6 @@ sm.ss.sp.trt.int2 <- glmer(survT1 ~ log.no.stems + spring.tot.precip*trt +prev_s
 sm.ss.sp.trt.int3 <- glmer(survT1 ~ log.no.stems*prev_spring.mean.temp+trt+spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 sm.ss.sp.trt.int4 <- glmer(survT1 ~ log.no.stems*spring.tot.precip + prev_spring.mean.temp + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 sm.ss.sp.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+spring.tot.precip + prev_spring.mean.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-
-# prev_fall.tot.precip – winter.mean.max.temp
-# sm.fw <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.spq1 <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + winter.mean.max.temp + I(winter.mean.max.temp^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.spq2 <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + winter.mean.max.temp  + I(prev_fall.tot.precip^2) + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.int <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip + winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.int2 <- glmer(survT1 ~ log.no.stems*winter.mean.max.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.trt <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip + trt + winter.mean.max.temp+(1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.trt.int <- glmer(survT1 ~ log.no.stems + prev_fall.tot.precip*trt +winter.mean.max.temp+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.trt.int2 <- glmer(survT1 ~ log.no.stems + winter.mean.max.temp*trt +prev_fall.tot.precip+ (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.trt.int3 <- glmer(survT1 ~ log.no.stems*prev_fall.tot.precip+trt+winter.mean.max.temp + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.trt.int4 <- glmer(survT1 ~ log.no.stems*winter.mean.max.temp + prev_fall.tot.precip + trt + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
-# sm.fw.trt.int6 <- glmer(survT1 ~ log.no.stems*trt+winter.mean.max.temp + prev_fall.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
 
 # winter.mean.max.temp – spring.tot.precip
 sm.s <- glmer(survT1 ~ log.no.stems + winter.mean.max.temp + spring.tot.precip + (1|Plot) + (1|Year), data = dac.surv, family = "binomial")
@@ -925,7 +736,7 @@ survival.d <- surv_AICc2 %>%
   select(c(1, 3, 4, 5))
   #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
 
-survival.d %>% gt() %>% gtsave(here("Tables", "Dactylis.AIC.table.survival.docx"))
+survival.d %>% gt() %>% gtsave(here("Tables", "Dactylis", "Dactylis.AIC.table.survival.docx"))
 
 #save the best fit model
 summary(sm.wt.sp.int)
@@ -937,7 +748,7 @@ s.coef <- data.frame(
   SE = coefs[, "Std. Error"]
 )
 
-write.csv(s.coef, here("Tables", "dactylis_survival_best_fit_coeff.csv"), row.names = F)
+write.csv(s.coef, here("Tables", "Dactylis", "dactylis_survival_best_fit_coeff.csv"), row.names = F)
 ```
 
 
@@ -1053,21 +864,6 @@ nb.prev_spring.mean.temp.trt.int2 <- glmer.nb(No.panicles ~ log.no.stems + prev_
 nb.prev_spring.mean.temp.trt.int3 <- glmer.nb(No.panicles ~ log.no.stems*trt + prev_spring.mean.max.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
 nb.prev_spring.mean.temp.trt.int4 <- glmer.nb(No.panicles ~ log.no.stems*trt + prev_spring.mean.max.temp*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
 
-# ## prev_winter.tot.precip
-# nb.prev_winter.tot.precip <- glmer.nb(No.panicles ~ log.no.stems + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.prev_winter.tot.precip.q <- glmer.nb(No.panicles ~ log.no.stems + prev_winter.tot.precip + I(prev_winter.tot.precip^2) + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.prev_winter.tot.precip.trt <- glmer.nb(No.panicles ~ log.no.stems + prev_winter.tot.precip + trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.prev_winter.tot.precip.trt.int2 <- glmer.nb(No.panicles ~ log.no.stems + prev_winter.tot.precip*trt + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.prev_winter.tot.precip.trt.int3 <- glmer.nb(No.panicles ~ log.no.stems*trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# 
-# ## both
-# nb.sp.wt.temp <- glmer.nb(No.panicles ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.sp.wt.temp.q1 <- glmer.nb(No.panicles ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + I(prev_winter.tot.precip^2) + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.sp.wt.temp.q2 <- glmer.nb(No.panicles ~ log.no.stems + prev_spring.mean.temp + prev_winter.tot.precip + I(prev_spring.mean.temp^2) + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.sp.wt.trt <- glmer.nb(No.panicles ~ log.no.stems + prev_spring.mean.temp + trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.sp.wt.trt.int2 <- glmer.nb(No.panicles ~ log.no.stems + prev_spring.mean.temp*trt + prev_winter.tot.precip + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.sp.wt.trt2 <- glmer.nb(No.panicles ~ log.no.stems + prev_winter.tot.precip + trt + prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
-# nb.sp.wt.trt.int4 <- glmer.nb(No.panicles ~ log.no.stems + prev_winter.tot.precip*trt + prev_spring.mean.temp + (1|Plot) + (1|Year), data = subset(dac, pflowerT == "1"))
 
 ################################################################################
 ###

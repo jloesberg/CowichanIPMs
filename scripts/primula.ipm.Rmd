@@ -22,8 +22,7 @@ primula <- read.csv(here("clean_data", "Primula_Demography_Data_CLEANED_2016thru
 climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
 climate<- climate %>%
   arrange(year) %>%
-  mutate(across(-year, ~lag(.x), .names = "prev_{.col}")) %>% 
-  select(c(year, winter.mean.min.temp, prev_winter.mean.min.temp, summer.mean.max.temp, prev_summer.mean.max.temp, spring.mean.temp, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, ends_with("tot.precip")))
+  mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))
 primula <- left_join(primula, climate)
 primula <- primula %>% 
   filter(year!= "2016") %>% 
@@ -60,6 +59,19 @@ new.plants <- primula %>%
          leaves>1|is.na(leaves)) %>% ## can't have more than 3 leaves if youre new
   filter(!is.na(log.ros.area))
 ```
+
+```{r}
+#NEW:
+gm.su.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
+pmflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = subset(primula, year != "2026"), family = "binomial")
+sm.ft.ti2 <-  glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
+nf.wtt <- glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp + (1|plot) + (1|year), 
+                  data = subset(primula, flow.sumT1>0), family = poisson)
+probc2 <- glmer(pclonal ~ log.ros.area + (1|plot) + (1|year), data = clonal, family = "binomial")
+no_clones2 <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
+
+```
+
 
 ```{r best fit vital rate models}
 gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
