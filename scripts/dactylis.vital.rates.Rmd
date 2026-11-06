@@ -42,6 +42,9 @@ dac <- dac %>%
 dac.surv <- dac %>% 
   filter(!Year =="2026",
   !is.na(survT1)) 
+
+test <- dac %>% count(plantid)
+
 ```
 
 ```{r ground truthing lambda}

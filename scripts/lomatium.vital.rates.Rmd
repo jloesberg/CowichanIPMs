@@ -49,6 +49,9 @@ lom.surv <- lom %>%
 
 seeds <- lom %>% 
   filter(!is.na(no.seeds))
+
+test <- lom %>% count(Tag)
+
 ```
 
 ```{r}

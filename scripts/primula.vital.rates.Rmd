@@ -52,6 +52,9 @@ leaf <- primula %>%
          no.smleaf>0,
          !is.na(no.neighbors),
          no.smleaf<15)
+
+test <- primula %>% count(tag)
+
 ```
 
 ```{r}

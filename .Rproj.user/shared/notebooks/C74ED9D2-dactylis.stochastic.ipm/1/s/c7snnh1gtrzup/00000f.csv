@@ -1,8 +1,0 @@
-"0","## Primula vital rates with climate data"
-"0","library(here)"
-"0","library(tidyverse)"
-"0","library(AICcmodavg)"
-"0","library(lme4)"
-"0","library(patchwork) #for putting plots into one"
-"0","library(popbio)"
-"0","theme_set(theme_classic(base_size = 18)) #for ggplot"
