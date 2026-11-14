@@ -195,7 +195,8 @@ lom %>% filter(pflowerT == 1) %>%
     method.args=list(family="poisson"), se = F)+
   facet_wrap(~Plot)
 ```
-fine for now but need to go through and deal with Scott's code!
+
+
 ```{r}
 #size in current year or past year for flowering
 lom_complete <- lom[complete.cases(lom[, c("pflower", "pflowerT1", "size", "Year", "Plot")]), ]
@@ -323,8 +324,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -355,7 +354,7 @@ write.csv(g.coef, here("Tables", "Lomatium", "lomatium_growth_best_fit_coeff.csv
 ```
 
 ```{r growth figure}
-summary(gm.s.min.temp.trt.int2)
+summary(gm.s.min.temp.trt.int4)
 pred.dat.g <- expand.grid(size = seq(min(lom$size, na.rm = TRUE), max(lom$size, na.rm = TRUE), by = .1),  trt = c("irrigated", "control", "drought"), summer.mean.min.temp = c(-1, 1))
 pred.dat.output.g <- cbind(pred.dat.g, as.data.frame(predict(gm.s.min.temp.trt.int4
 , newdata = pred.dat.g, type="response", re.form=~0, pred.var=TRUE)))
@@ -417,41 +416,6 @@ cor_results <- lapply(names(pflower.corr), function(v) {
 cor_results_pflower <- do.call(rbind, cor_results)
 cor_results_pflower$p_value <- format(cor_results_pflower$p_value, scientific = FALSE)
 
-# # Sort by absolute correlation
-# cor_results_pflower <- cor_results_pflower[order(-abs(cor_results_pflower$correlation)), ]
-# #prev_summer.mean.max.temp
-# ###
-# #these are the ones to test
-# vars <- c("prev_spring.mean.temp", "prev_winter.mean.max.temp",
-#           "prev_winter.tot.precip", 
-#           "spring.tot.precip")
-# 
-# # Unique climate-year values
-# dac.unique <- dac %>%
-#   distinct(Year, across(all_of(vars)))
-# 
-# # All pairwise combinations
-# pairs <- combn(vars, 2, simplify = FALSE)
-# 
-# cor_results <- map_dfr(pairs, function(p) {
-#   x <- dac.unique[[p[1]]]
-#   y <- dac.unique[[p[2]]]
-#   ct <- cor.test(x, y)
-#   tibble(
-#     var1 = p[1],
-#     var2 = p[2],
-#     estimate = unname(ct$estimate),
-#     statistic = unname(ct$statistic),
-#     p.value = ct$p.value,
-#     conf.low = ct$conf.int[1],
-#     conf.high = ct$conf.int[2]
-#   )
-# })
-# 
-# cor_results
-# pairs <- combn(vars, 2, simplify = FALSE)
-# 
-# pairs
 ```
 
 ```{r pflower model selection}
@@ -490,8 +454,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -568,48 +530,6 @@ cor_results <- lapply(names(surv.corr), function(v) {
 })
 
 cor_results_surv <- do.call(rbind, cor_results)
-
-#fall.mean.temp only testing this one	
-#prev_winter.mean.max.temp
-#prev_winter.tot.precip	
-#prev_spring.mean.max.temp	
-#these are the ones to test
-# vars <- c("fall.mean.temp", "prev_winter.mean.max.temp",
-#           "prev_winter.tot.precip", "prev_spring.mean.max.temp")
-# 
-# # Unique climate-year values from dac.surv
-# surv.unique <- lom.surv %>%
-#   ungroup() |> 
-#   distinct(Year, across(all_of(vars)))
-# 
-# # All pairwise combinations
-# pairs <- combn(vars, 2, simplify = FALSE)
-# 
-# cor_results <- map_dfr(pairs, function(p) {
-#   x <- surv.unique[[p[1]]]
-#   y <- surv.unique[[p[2]]]
-#   ct <- cor.test(x, y)
-#   tibble(
-#     var1 = p[1],
-#     var2 = p[2],
-#     estimate = unname(ct$estimate),
-#     statistic = unname(ct$statistic),
-#     p.value = ct$p.value,
-#     conf.low = ct$conf.int[1],
-#     conf.high = ct$conf.int[2]
-#   )
-# })
-# 
-# cor_results
-# 
-# pairs <- combn(vars, 2, simplify = FALSE)
-# 
-# pairs
-#only test: 
-# [1] "fall.mean.temp"            "prev_winter.mean.max.temp"
-# [1] "fall.mean.temp"         "prev_winter.tot.precip"
-# [1] 
-# [1] "prev_winter.mean.max.temp" "prev_spring.mean.max.temp"
 ```
 
 ```{r survival model selection}
@@ -620,7 +540,7 @@ sm.base.trt.int <- glmer(psurvivalT1 ~ size*trt + (1|Plot) + (1|Year), data = lo
 
 #fall.mean.temp
 sm.f <- glmer(psurvivalT1 ~ size + fall.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
-sm.f.q <- glmer(psurvivalT1 ~ size + fall.mean.temp + I(prev_winter.mean.max.temp^2) + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
+sm.f.q <- glmer(psurvivalT1 ~ size + fall.mean.temp + I(fall.mean.temp^2) + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
 sm.f.int <- glmer(psurvivalT1 ~ size*fall.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
 sm.f.trt <- glmer(psurvivalT1 ~ size + fall.mean.temp + trt + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
 sm.f.trt.int1 <- glmer(psurvivalT1 ~ size*fall.mean.temp + trt + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
@@ -635,10 +555,9 @@ surv_AICc<-aictab(cand.set = surv, modnames = NULL,second.ord=TRUE,nobs=NULL,sor
 
 #rm(list = ls()[grepl("sm", ls())]) #removes everything with gm
 
-
-
 summary(sm.f.int2)
 ```
+
 ```{r save survival}
 surv_AICc2 <- surv_AICc |> 
   mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
@@ -768,6 +687,7 @@ probseeds_AICc<-aictab(cand.set = probseeds, modnames = NULL,second.ord=TRUE,nob
 
 summary(ps.s.precip)
 ```
+
 ```{r save pseeds}
 probseeds_AICc2 <- probseeds_AICc |> 
   mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
@@ -778,8 +698,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -904,7 +822,6 @@ poisson.s.trt3 <- glmer.nb(no.seeds ~ size*trt   + prev_summer.mean.min.temp+ (1
 ###
 umbels <- mget(ls(pattern = "^poisson")) #make a list of all of those models that start with gm (^ means start with)
 panicles_AICc<-aictab(cand.set = umbels, modnames = NULL,second.ord=TRUE,nobs=NULL,sort=TRUE)
-cor(seeds$spring.mean.temp, seeds$prev_fall.mean.temp)
 #rm(list = ls()[grepl("poisson", ls())]) #removes everything with gm
 summary(poisson.s.trt3)
 
@@ -920,8 +837,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -1003,3 +918,133 @@ last_row <- pseeds.fig + plot_spacer() + plot_layout(widths = c(1, 3))
 ggsave(here("Figures", "Lomatium", "all.png"), plot = all, width = 10, height =18)
 ```
 
+##p(est)
+```{r}
+#seeds to seedlings proxy:
+#seedlings in year t is a function of the number of seeds in the plot in the year prior
+#so to get the transition rate: number of seedlings in t/#seeds year t-1
+#this is tricky because some years these were surveyed in different places
+#so, to solve this, 
+#go through and exclude plot:year transitions where seedlings werent surveyed in whole plot
+#we have seed counts for all flowering plants for 2021, 2022, 2024, 2025, and then subsets for 2023
+#we have new plants surveyed everywhere in 2022 and 2023, and then subsets 2024-2026
+
+#Reliable transitions:
+#all from 2021 seeds -> 2022 seedlings
+#all from 2022 seeds -> 2023 seedlings
+# 2023 seeds -> 2024 seedlings: for plot 14 (XCoor 0-3), plots 1, 3, 6, 4, 10 (0-9), plot 12 (10-19)
+# 2024 seeds -> 2025 seedlings: for: plot 14 (0-3), plots 1, 3, 6, 4, 10 (0-9)
+# 2025 seeds -> 2026 seedlings: for: plot 1, 2, 3, 4, 5, 6, 7, 10,12, 13, 14 and 15 (0-9), and 9, 11 (10-19)
+#get seeds on their own:
+seeds.subset <- lom %>% 
+  filter(no.seeds>0) |> 
+  filter(
+    # 2021 and 2022 seeds: keep everything
+    Year %in% c(2021, 2022) |
+
+    # 2023 seeds -> 2024 seedlings
+    (Year == 2023 & (
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(1, 3, 4, 6, 10) & between(Xcoor, 0, 9)) |
+      (Plot == 12 & between(Xcoor, 10, 19))
+    )) |
+
+    # 2024 seeds -> 2025 seedlings
+    (Year == 2024 & (
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(1, 3, 4, 6, 10) & between(Xcoor, 0, 9))
+    )) |
+
+    # 2025 seeds -> 2026 seedlings
+    (Year == 2025 & (
+      (Plot %in% c(1:7, 10, 12, 13, 14, 15) & between(Xcoor, 0, 9)) |
+      (Plot %in% c(9, 11) & between(Xcoor, 10, 19))
+    ))
+  ) |> 
+  group_by(Year, Plot) %>%
+  summarise(
+    n_plants    = n(),
+    total_seeds = sum(no.seeds, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(Year, Plot)
+
+
+#to do: get lomatium seedlings 
+lom.new <- lom %>%
+  group_by(plantid) %>%
+  slice_min(as.numeric(as.character(Year)), n = 1, with_ties = FALSE) %>% 
+  filter(Year != "2017")%>% 
+  filter(pflower !="1", !is.na(pflower), !is.na(Leaf.length), No.leaves <2 & Leaf.length<10)
+
+lom.new_subset <- lom.new %>%
+  filter(
+    Year %in% c(2021, 2022) |
+    (Year == 2023 & (
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(1, 3, 4, 6, 10) & between(Xcoor, 0, 9)) |
+      (Plot == 12 & between(Xcoor, 10, 19)))) |
+    (Year == 2024 & (
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(1, 3, 4, 6, 10) & between(Xcoor, 0, 9)))) |
+    (Year == 2025 & (
+      (Plot %in% c(1, 3, 6, 4, 10, 12) & between(Xcoor, 0, 9)) |
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(9, 11) & between(Xcoor, 10, 19))))|
+    (Year == 2026 & (
+      (Plot = 14)|
+      (Plot %in% c(1:7, 10, 12, 13, 15) & between(Xcoor, 0, 9)) |
+      (Plot %in% c(9, 11) & between(Xcoor, 10, 19))))) |> 
+  ungroup() |> 
+  count(Year, Plot, name = "seedlings_t") |> 
+  ungroup()
+
+#sum of seeds in those places in t
+lom.seeds_subset <- lom %>%
+  ungroup() %>%
+  filter(!is.na(no.seeds)) %>%
+  filter(
+    Year %in% c(2021, 2022) |
+    (Year == 2023 & (
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(1, 3, 4, 6, 10) & between(Xcoor, 0, 9)))) |
+    (Year == 2024 & (
+      (Plot %in% c(1, 3, 6, 4, 10, 12) & between(Xcoor, 0, 9)) |
+      (Plot == 14 & between(Xcoor, 0, 3)) |
+      (Plot %in% c(9, 11) & between(Xcoor, 10, 19)))) |
+    (Year == 2025 & (
+      (Plot = 14)|
+      (Plot %in% c(1:7, 10, 12, 13, 15) & between(Xcoor, 0, 9)) |
+      (Plot %in% c(9, 11) & between(Xcoor, 10, 19))))) %>%
+  group_by(Year, Plot) %>%
+  summarise(
+    total_seeds = sum(no.seeds, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(Year, Plot) |> complete(Plot, Year = c("2021", "2022", "2023", "2024", "2025", "2026"), fill = list(seedlings_t = 0))
+
+germ <- left_join(lom.new_subset, lom.seeds_subset) |> 
+  group_by(Plot) |> 
+  arrange(Year) |> 
+  mutate(seedlings_t1 = lead(seedlings_t)) |> 
+  select(Plot, Year, total_seeds, seedlings_t1) |> 
+  group_by(Year) |> 
+  summarize(seeds = sum(total_seeds, na.rm =T),
+            seedlings_t1  = sum(seedlings_t1, na.rm =T),
+            germ_rate = signif(seedlings_t1/seeds, 3)) |> 
+  filter(Year != "2026")
+germ <- germ |> 
+  bind_rows(
+    tibble(Year = c("overall.mean.germ", "seed.addition.germ"),
+           germ_rate = c(mean(germ$germ_rate), 0.00905))
+  )
+
+overall.mean.germ <- mean(germ$germ_rate) #coarse! but need to go through and look at where seeds vs seedlings were surveyed
+overall.sd.germ <- sd(germ$germ_rate)
+#0.0184 for overall mean
+#pest <- 0.00905 #from scott's fancy calculations from the seed addition
+#germ.rate = number of seedlings from total seeds in same area of plot
+
+write.csv(germ, here("clean_data", "Lomatium_seed_germination_rates.csv"), row.names = F)
+
+```
