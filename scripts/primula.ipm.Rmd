@@ -60,26 +60,15 @@ new.plants <- primula %>%
   filter(!is.na(log.ros.area))
 ```
 
-```{r}
-#NEW:
+```{r best fit vital rate models}
 gm.su.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
 pmflow.ti <-  glmer(pflowerT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = subset(primula, year != "2026"), family = "binomial")
-sm.ft.ti2 <-  glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
 nf.wtt <- glmer(flow.sumT1 ~ log.ros.area + winter.mean.min.temp + (1|plot) + (1|year), 
                   data = subset(primula, flow.sumT1>0), family = poisson)
+sm.ft.ti2 <-  glmer(psurvivalT1 ~ log.ros.area + prev_fall.mean.max.temp*trt + (1|plot) + (1|year), data =primula.surv, family = "binomial")
 probc2 <- glmer(pclonal ~ log.ros.area + (1|plot) + (1|year), data = clonal, family = "binomial")
-no_clones2 <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
-
-```
-
-
-```{r best fit vital rate models}
-gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
-pmflow.ti <-  glmer(pflower ~ log.ros.area.prev*trt + (1|plot) + (1|year), data = subset(primula, year != "2017"), family = "binomial")
-nf.wt <-  glmer(flow.sum ~ log.ros.area.prev + prev_winter.mean.min.temp	+(1|plot) + (1|year), data= subset(primula, flow.sum>0), family = "poisson")
-sm <- glmer(psurvivalT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, family = "binomial")
-probc2 <- glmer(pclonal ~ log.ros.area + (1|plot) + (1|year), data = clonal, family = "binomial")
-no_clones2 <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
+no_clones2 <- glmmTMB(no.smleaf ~ log.ros.area + (1 | plot) + (1 | year),
+                        family = truncated_nbinom2, data = leaf)
 ```
 
 Then the other miscellany we'll need (size independent parameters):

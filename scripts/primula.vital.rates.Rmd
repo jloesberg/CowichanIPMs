@@ -53,65 +53,9 @@ leaf <- primula %>%
          !is.na(no.neighbors),
          no.smleaf<15)
 
-test <- primula %>% count(tag)
+primula %>% count(tag)
 
 ```
-
-```{r}
-#anything weird going on in data?
-primula %>% ggplot(aes(x = log.ros.area, y = log.ros.areaT1)) +
-  geom_abline(intercept = 0, slope = 1, color = "grey")+
-  geom_point() + 
-  geom_smooth(method = "lm", se = F)+
-  facet_wrap(~year)
-
-primula %>% filter(no.smleaf>0) %>% ggplot(aes(x = log.ros.area, y = no.smleaf)) +
-  geom_abline(intercept = 0, slope = 1, color = "grey")+
-  geom_point() + 
-  geom_smooth(method="glm", method.args=list(family="poisson"), se = F, size = 1.5, aes(color = trt))+
-  facet_wrap(~trt)
-
-ggplot(subset(primula, !is.na(pflower)), aes(x = log.ros.area.prev, y = as.numeric(pflower)-1)) +
-  geom_point() + 
-  geom_smooth(method="glm", method.args=list(family="binomial"), se = F)+
-  facet_wrap(~year)
-
-
-
-ggplot(primula.surv, aes(x = log.ros.area, y = as.numeric(psurvivalT1)-1)) +
-  geom_jitter() + 
-  geom_smooth(method="glm", method.args=list(family="binomial"), se = F)+
-  facet_wrap(~year)
-
-
-(size <- primula %>% ggplot(aes(x = no.neighbors, y = log.ros.area)) +
-  geom_jitter() + 
-  geom_smooth(method = "lm", se = F,size = 1.5, aes(color = trt))+
-  scale_color_manual(values = c("#f7ba00", "#f74215", "#00b995")) +
-
-  labs(x ="Number of neighbors", y = "log(rosette size)"))
-# 
-# (flow <- primula %>% 
-#   filter(pflower=="1") %>% 
-#   ggplot(aes(x = no.neighbors, y = no.flowers)) +
-#   geom_jitter() + 
-#   geom_smooth(method="glm", method.args=list(family="poisson"), se = F, size = 1.5, aes(color = trt))+
-#   scale_color_manual(values = c("#f7ba00", "#f74215", "#00b995"))+
-#   labs(x ="Number of neighbors", y = "Number of flowers"))
-# (bulb <- primula %>% 
-#   filter(no.smleaf>0) %>% 
-#   ggplot(aes(x = no.neighbors, y = no.smleaf)) +
-#   geom_jitter() + 
-#   geom_smooth(method="glm", method.args=list(family="poisson"), se = F, size = 1.5, aes(color = trt))+
-#   scale_color_manual(values = c("#f7ba00", "#f74215", "#00b995")) +
-#   labs(x ="Number of neighbors", y = "Number of bulbets"))
-# 
-# (dens <- size+flow+bulb + plot_layout(ncol = 3, guides = "collect")
-# )
-# ggsave(plot = dens, file = "C:/Users/Jenna/OneDrive - The University Of British Columbia/Data Projects/chapter2/figures/field vital rates/dens.png", width = 10, height = 6, dpi = 300)
-
-```
-
 
 ```{r growth prequel}
 #table(primula$year, primula$log.ros.areaT1)
@@ -157,7 +101,7 @@ cor.test(p.unique$fall.tot.precip, p.unique$spring.mean.temp)
 gm.base <- lmer(log.ros.areaT1 ~ log.ros.area + (1|plot) + (1|year), data = primula, REML = F)
 gm.t <-  lmer(log.ros.areaT1 ~ log.ros.area + trt + (1|plot) + (1|year), data = primula, REML = F)
 gm.ti <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + (1|plot) + (1|year), data = primula, REML = F)
-
+#
 gm.st <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
 gm.st.q <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + I(spring.mean.temp^2) + (1|plot) + (1|year), data = primula, REML = F)
 gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
@@ -168,7 +112,6 @@ gm.st.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt +spring.mean.temp*trt + (1|
 gm.st.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + trt + (1|plot) + (1|year), data = primula, REML = F)
 
 ##
-
 gm.fp <-  lmer(log.ros.areaT1 ~ log.ros.area + fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.q <-  lmer(log.ros.areaT1 ~ log.ros.area + fall.tot.precip + I(fall.tot.precip^2)+ (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.i <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
@@ -177,7 +120,6 @@ gm.fp.ti <-  lmer(log.ros.areaT1 ~ log.ros.area+trt*fall.tot.precip + (1|plot) +
 gm.fp.ti2 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt+fall.tot.precip + (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.ti3 <-  lmer(log.ros.areaT1 ~ log.ros.area*trt + fall.tot.precip*trt  + (1|plot) + (1|year), data = primula, REML = F)
 gm.fp.ti4 <-  lmer(log.ros.areaT1 ~ log.ros.area*fall.tot.precip + trt  + (1|plot) + (1|year), data = primula, REML = F)
-
 
 gm.su <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
 gm.su.q <-  lmer(log.ros.areaT1 ~ log.ros.area + spring.mean.temp + I(spring.mean.temp^2)  + fall.tot.precip+ (1|plot) + (1|year), data = primula, REML = F)
@@ -196,7 +138,7 @@ growth_AICc<-aictab(cand.set = growth,second.ord=TRUE,nobs=NULL,sort=TRUE)
 #gm.st.i
 #rm(list = ls(pattern = "^surv\\."))
 #gm.st.i <-  lmer(log.ros.areaT1 ~ log.ros.area*spring.mean.temp + (1|plot) + (1|year), data = primula, REML = F)
-
+summary(gm.su.i)
 ```
 
 ```{r save growth}
@@ -209,8 +151,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -223,7 +163,6 @@ growth.d <- growth_AICc2 %>%
   rename(Model = Modnames) %>% 
   relocate(fixed_effects, .before =1) |> 
   select(c(1, 3, 4, 5))
-  #filter(Rank %in% c(1:10, 43)) #also show the intercept only model
 
 growth.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.growth.docx"))
 
@@ -284,7 +223,7 @@ colnames(pred.dat.output.g)[ncol(pred.dat.output.g)] <- "log.ros.areaT1"  # Rena
 
 (gr.fig <- growth.sp+growth.su +  plot_annotation(tag_levels = 'i') + plot_layout(axes = "collect")
 )
-ggsave(here("Figures", "Primula", "growth.png"), plot = growth.fig, width = 6, height =6)
+ggsave(here("Figures", "Primula", "growth.png"), plot = gr.fig, width = 12, height =6)
 ```
 
 
@@ -434,6 +373,7 @@ cor_results <- lapply(names(flower.corr), function(v) {
 
 # Combine into one data frame
 cor_results_flower <- do.call(rbind, cor_results)
+cor_results_flower$p_value <- format(cor_results_flower$p_value, scientific = FALSE)
 
 #winter.mean.min.temp
 #prev_winter.tot.precip
@@ -530,7 +470,7 @@ number.flower_AICc <- aictab(cand.set = number.flower_ok, modnames = names(numbe
 number.flower_AICc<-aictab(cand.set = number.flower,second.ord=TRUE,nobs=NULL,sort=TRUE)
 #rm(list = ls(pattern = "^nf\\."))
 
-summary(nf.wt)
+summary(nf.wtt)
 ```
 
 ```{r}
@@ -543,7 +483,7 @@ colnames(pred.dat.output)[ncol(pred.dat.output)] <- "flow.sumT1"  # Renaming the
         filter(flow.sumT1>0) %>%
   ggplot(aes(x = log.ros.area, y = flow.sumT1))+
   geom_point(alpha= 0.2, shape = 1)+
-  geom_line(data = pred.dat.output, aes(x = log.ros.area, y = flow.sum, color = as.factor(winter.mean.min.temp)), linewidth = 1.5)+
+  geom_line(data = pred.dat.output, aes(x = log.ros.area, y = flow.sumT1, color = as.factor(winter.mean.min.temp)), linewidth = 1.5)+
    theme(axis.line = element_line(colour = 'black', linewidth = 1.1), legend.position = c(0.25, 0.9))+
   scale_x_continuous( limits = c(0, 6), breaks = seq(0, 6, by = 1), expand = c(0, 0))+        
   scale_y_continuous(limits = c(0, NA), breaks = seq(0, ceiling(max(primula$flow.sum, na.rm = TRUE)), by = 1)) +
@@ -652,8 +592,6 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
@@ -715,6 +653,7 @@ pclone <- mget(ls(pattern = "^probc"))
 pclone_AICc<-aictab(cand.set = pclone,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
 ```
+
 ```{r save clonal}
 pclone_AICc2 <- pclone_AICc |> 
   mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
@@ -776,15 +715,17 @@ ggsave(here("Figures", "Primula", "pclonal.png"), plot = pc.fig, width = 6, heig
 ```
 
 ```{r}
-no_clones1 <- glmer(no.smleaf ~ 1 + (1|plot) + (1|year), data = leaf, family = "poisson")
-no_clones2 <- glmer(no.smleaf ~ log.ros.area + (1|plot) + (1|year), data = leaf, family = "poisson")
-no_clones3 <- glmer(no.smleaf ~ log.ros.area + trt +(1|plot) + (1|year), data = leaf, family = "poisson")
-no_clones4 <- glmer(no.smleaf ~ log.ros.area*trt + (1|plot) + (1|year), data = leaf, family = "poisson")
+no_clones1 <- glmmTMB(no.smleaf ~ 1 + (1|plot) + (1|year), data = leaf, family = truncated_nbinom2)
+no_clones2 <- glmmTMB(no.smleaf ~ log.ros.area + (1 | plot) + (1 | year),
+                        family = truncated_nbinom2, data = leaf)
+no_clones3 <- glmmTMB(no.smleaf ~ log.ros.area + trt +(1|plot) + (1|year), data = leaf, family = truncated_nbinom2)
+no_clones4 <- glmmTMB(no.smleaf ~ log.ros.area*trt + (1|plot) + (1|year), data = leaf, family = truncated_nbinom2)
 
-no.clones <- mget(ls(pattern = "^no_clones"))
-no.clones_AICc<-aictab(cand.set = no.clones,second.ord=TRUE,nobs=NULL,sort=TRUE)
+no.clones. <- mget(ls(pattern = "^no_clones"))
+no.clones_AICc<-aictab(cand.set = no.clones.,second.ord=TRUE,nobs=NULL,sort=TRUE)
 
 ```
+
 ```{r save clonal}
 no.clones_AICc2 <- no.clones_AICc |> 
   mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
@@ -795,12 +736,10 @@ get_fixed_formula <- function(m) {
   rhs <- deparse(f[[3]], width.cutoff = 500)
   rhs <- paste(rhs, collapse = "")
   rhs <- gsub("\\s*\\+?\\s*\\(1\\s*\\|\\s*\\w+\\)", "", rhs)
-  #rhs <- gsub("\\s*\\+?\\s*offset\\(log\\(total1\\)\\)", "", rhs)  # strip offset term
-  #rhs <- gsub("log.no.stems", "size", rhs)                    # rename density term
   trimws(rhs)
 }
 
-fixed_formulas <- sapply(no.clones, get_fixed_formula)
+fixed_formulas <- sapply(no.clones., get_fixed_formula)
 
 no.clones_AICc2$fixed_effects <- fixed_formulas[no.clones_AICc2$Modnames]
 
@@ -815,12 +754,13 @@ survival.d %>% gt() %>% gtsave(here("Tables", "Primula", "Primula.AIC.table.clon
 
 #save the best fit model
 summary(no_clones2)
-coefs <- summary(no_clones2)$coefficients
+coefs <- summary(no_clones2)$coefficients$cond
 
 s.coef <- data.frame(
-  Term = rownames(coefs),
+  Term     = rownames(coefs),
   Estimate = coefs[, "Estimate"],
-  SE = coefs[, "Std. Error"]
+  SE       = coefs[, "Std. Error"],
+  row.names = NULL
 )
 
 write.csv(s.coef, here("Tables", "Primula", "primula_clones_best_fit_coeff.csv"), row.names = F)

@@ -13,6 +13,8 @@ library(AICcmodavg)
 library(lme4)
 library(patchwork) #for putting plots into one
 library(popbio)
+library(glmmTMB)
+
 theme_set(theme_classic(base_size = 18)) #for ggplot
 ```
 
@@ -76,7 +78,7 @@ max.size <-maxRealsize+1.5 #upper
 
 ```{r parameters , echo=FALSE}
 #this is for range of climates
-rows <- expand.grid(summer.mean.min.temp = seq(-1, 1, by = 1),winter.mean.max.temp = seq(-1, 1, by = 1),fall.mean.temp = seq(-1, 1, by = 1),spring.tot.precip = seq(-1, 1, by = 1),prev_summer.mean.min.temp = seq(-1, 1, by = 1), trt = c("control", "drought", "irrigated")) 
+rows <- expand.grid(summer.mean.min.temp = seq(-1, 1, by = 1),winter.mean.max.temp = seq(-1, 1, by = 1),fall.mean.temp = seq(-1, 1, by = 1), prev_summer.mean.min.temp = seq(-1, 1, by = 1), trt = c("irrigated", "control", "drought")) 
 #set up an empty parameter df
 params=data.frame(
 	growth.int = c(NA),
@@ -147,42 +149,37 @@ params <- params %>%
 
 
 ### 4. pseeds
-ps.s.precip <- glmer(pseeds ~ size  + spring.tot.precip + (1|Plot) + (1|Year), data = seeds, family = "binomial")
-pseeds <- fixef(ps.s.precip)
+ps.s.t.int <- glmer(pseeds ~ size*prev_summer.mean.min.temp + (1|Plot) + (1|Year), data = seeds, family = "binomial")
+pseeds <- fixef(ps.s.t.int)
 
 params <- params %>%
   mutate(
-    pseeds.slope = pseeds["size"],
+    pseeds.slope = pseeds["size"] +
+     pseeds["size:prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
     pseeds.int = pseeds["(Intercept)"] +
-     pseeds["spring.tot.precip"] * spring.tot.precip
+     pseeds["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp
   )
 ### 5. noseeds:
-poisson.s.trt3 <- glmer.nb(no.seeds ~ size*trt + prev_summer.mean.min.temp+ (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0))
+poisson.s.trt3 <- glmmTMB(no.seeds ~ size*trt + prev_summer.mean.min.temp+ (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0), family = truncated_nbinom2)
 no.seeds <- fixef(poisson.s.trt3)
+
+no.seeds.coef <- fixef(poisson.s.trt3)$cond
+theta <- sigma(poisson.s.trt3)
 
 params <- params %>%
   mutate(
-    no.seeds.slope =  case_when(
-      trt == "irrigated" ~ no.seeds["size"],
-      trt == "control" ~ no.seeds["size"] + no.seeds["size:trtcontrol"],
-      trt == "drought" ~ no.seeds["size"] + no.seeds["size:trtdrought"]),
-
     no.seeds.int = case_when(
-      trt == "irrigated" ~
-        no.seeds["(Intercept)"] +
-        no.seeds["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
-
-      trt == "control" ~
-        no.seeds["(Intercept)"] +
-        no.seeds["trtcontrol"] +
-        no.seeds["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
-
-      trt == "drought" ~
-        no.seeds["(Intercept)"] +
-        no.seeds["trtdrought"] +
-        no.seeds["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp
-    )
-  )
+      trt == "irrigated" ~ no.seeds.coef["(Intercept)"] +
+        no.seeds.coef["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
+      trt == "control"   ~ no.seeds.coef["(Intercept)"] + no.seeds.coef["trtcontrol"] +
+        no.seeds.coef["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
+      trt == "drought"   ~ no.seeds.coef["(Intercept)"] + no.seeds.coef["trtdrought"] +
+        no.seeds.coef["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp),
+    no.seeds.slope = case_when(
+      trt == "irrigated" ~ no.seeds.coef["size"],
+      trt == "control"   ~ no.seeds.coef["size"] + no.seeds.coef["size:trtcontrol"],
+      trt == "drought"   ~ no.seeds.coef["size"] + no.seeds.coef["size:trtdrought"]),
+    no.seeds.theta = theta)
 
 #params$no.seeds <- no.seeds
 params$pest <- 0.00696
@@ -240,15 +237,27 @@ ps.x <- function(x, params) {
 # f.yx <- function(x,params) { 		
 #   return(pf.x(x,params)*exp(params$no.flow.int+params$no.flow.slope*x)* params$pest)
 # }
+# f.yx <- function(x, params) {
+#   pf.x(x, params) * ps.x(x, params) * exp(params$no.seeds.int + params$no.seeds.slope * x) * params$pest
+# }
 f.yx <- function(x, params) {
-  pf.x(x, params) * ps.x(x, params) * exp(params$no.seeds.int + params$no.seeds.slope * x) * params$pest
+  # expected seeds per seed-setting plant (zero-truncated negative binomial mean)
+  mu    <- exp(params$no.seeds.int + params$no.seeds.slope * x)
+  theta <- params$no.seeds.theta
+  p0    <- (theta / (theta + mu))^theta       # P(0 seeds) under the untruncated NB
+  seeds.given.seeds <- mu / (1 - p0)
+
+  pf.x(x, params) *            # probability of flowering
+    ps.x(x, params) *          # probability of producing seeds
+    seeds.given.seeds *        # expected number of seeds, given some are produced
+    params$pest                # establishment (seed to seedling)
 }
 ##so this should be outputting the number of seedlings made? Yes
-#f.yx(x = 4, params = params[1,])
+#f.yx(x = 6, params = params[1,])
 
 
 ##do big plants make a million seeds?
-exp(params$no.seeds.int+params$no.seeds.slope*5) 
+#exp(params$no.seeds.int+params$no.seeds.slope*5) 
 ## no they make a reasonable amount
 
 #SIZE DISTRIBUTION OF RECRUITS - so the ones going from the continuous into the continuous stage. 
@@ -285,7 +294,7 @@ bigmatrix <- function(params_list, mat.size){
   }) * h
 
   # Growth/survival
-  Tmat <- t(outer(y, y, P, params = params_list)) * h
+  Tmat <- (outer(y, y, P, params = params_list)) * h
 
   # Full kernel
   IPMmat <- Fmat + Tmat
@@ -301,7 +310,7 @@ bigmatrix <- function(params_list, mat.size){
     summer.mean.min.temp = params_list$summer.mean.min.temp,
     winter.mean.max.temp = params_list$winter.mean.max.temp,
     fall.mean.temp = params_list$fall.mean.temp,
-    spring.tot.precip = params_list$spring.tot.precip,
+    #spring.tot.precip = params_list$spring.tot.precip,
     prev_summer.mean.min.temp = params_list$prev_summer.mean.min.temp,
     trt = params_list$trt)
 
@@ -319,10 +328,10 @@ lom_lambda <- do.call(rbind, lamb_lists)
 
 ```{r}
 (determ <- lom_lambda %>%
-  filter(summer.mean.min.temp == 0, winter.mean.max.temp == 0, fall.mean.temp==0, spring.tot.precip ==0, prev_summer.mean.min.temp == 0) %>% 
+  filter(summer.mean.min.temp == 0, winter.mean.max.temp == 0, fall.mean.temp==0, prev_summer.mean.min.temp == 0) %>% 
   ggplot(aes(x = trt, y = lambda, color = trt)) +
   geom_point(size = 2) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   theme(legend.position = "none")+
   labs(
     x = "",
@@ -335,66 +344,62 @@ ggsave(here("Figures", "Lomatium", "lomatium.pop.growth.determ.mean.png"), plot 
 
 
 ```{r}
-y_limits <- c(.75, 2)
+y_limits <- c(.75, 1.1)
 (summer.temp <- lom_lambda %>%
-  filter(winter.mean.max.temp == 0, fall.mean.temp==0, spring.tot.precip ==0, prev_summer.mean.min.temp == 0) %>% 
+  filter(winter.mean.max.temp == 0, fall.mean.temp==0, prev_summer.mean.min.temp == 0) %>% 
   ggplot(aes(x = summer.mean.min.temp, y = lambda, color = trt)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   labs(
     x = "Summer Min Temperature, t",
     y = expression(lambda),
     color = ""
   ) )
 (winter <- lom_lambda %>%
-  filter(fall.mean.temp==0, spring.tot.precip ==0, prev_summer.mean.min.temp == 0, summer.mean.min.temp == 0) %>% 
+  filter(fall.mean.temp==0, , prev_summer.mean.min.temp == 0, summer.mean.min.temp == 0) %>% 
   ggplot(aes(x = winter.mean.max.temp, y = lambda, color = trt)) +
+    geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   labs(
     x = "Winter Max Temperature, t",
     y = expression(lambda),
     color = ""
   ) )
 (fall.temp <- lom_lambda %>%
-  filter(winter.mean.max.temp == 0, summer.mean.min.temp==0, spring.tot.precip ==0, prev_summer.mean.min.temp == 0) %>% 
+  filter(winter.mean.max.temp == 0, summer.mean.min.temp==0, prev_summer.mean.min.temp == 0) %>% 
   ggplot(aes(x = fall.mean.temp, y = lambda, color = trt)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   labs(
     x = "Fall Mean Temperature, t",
     y = expression(lambda),
     color = ""
   ) )
-(spring.precip <- lom_lambda %>%
-  filter(winter.mean.max.temp == 0, summer.mean.min.temp==0, fall.mean.temp ==0, prev_summer.mean.min.temp == 0) %>% 
-  ggplot(aes(x = spring.tot.precip, y = lambda, color = trt)) +
-  geom_line(size = 1.2) +
-  scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
-  labs(
-    x = "Spring precipitation, t",
-    y = expression(lambda),
-    color = ""
-  ) )
+
 (summer.prev <- lom_lambda %>%
-  filter(winter.mean.max.temp == 0, summer.mean.min.temp==0, fall.mean.temp ==0, spring.tot.precip == 0) %>% 
+  filter(winter.mean.max.temp == 0, summer.mean.min.temp==0, fall.mean.temp ==0) %>% 
   ggplot(aes(x = prev_summer.mean.min.temp, y = lambda, color = trt)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
   geom_line(size = 1.2) +
   scale_y_continuous(limits = y_limits) +
-  scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   labs(
-    x = "Summer min temperature, t-1",
+    x = "Summer Min Temperature, t-1",
     y = expression(lambda),
     color = ""
   ) )
-(together <- summer.temp+winter+fall.temp+spring.precip+summer.prev+ plot_layout(guides = "collect", axis_titles = "collect") &
+(together <- summer.temp+winter+fall.temp+summer.prev+ 
+    plot_layout(guides = "collect", axis_titles = "collect")+ 
+    plot_annotation(tag_levels = "A", tag_suffix = "")&
   theme(legend.position = "bottom"))
 
-#ggsave(here("Figures", "lomatium", "lomatium.pop.growth.png"), plot = together, width = 10, height =5)
+ggsave(here("Figures", "lomatium", "lomatium.pop.growth.deterministic.png"), plot = together, width = 8, height =8)
 
 ```
 
@@ -409,7 +414,6 @@ params.sens <- params |>
   filter(summer.mean.min.temp ==0,
     winter.mean.max.temp ==0,
     fall.mean.temp ==0,
-    spring.tot.precip==0,
     prev_summer.mean.min.temp ==0)
 
 perturb_params <- c(
@@ -466,7 +470,7 @@ bigmatrix <- function(params_list, mat.size){
   }) * h
 
   # Growth/survival
-  Tmat <- t(outer(y, y, P, params = params_list)) * h
+  Tmat <- (outer(y, y, P, params = params_list)) * h
 
   # Full kernel
   IPMmat <- Fmat + Tmat
@@ -482,7 +486,7 @@ bigmatrix <- function(params_list, mat.size){
     summer.mean.min.temp = params_list$summer.mean.min.temp,
     winter.mean.max.temp = params_list$winter.mean.max.temp,
     fall.mean.temp = params_list$fall.mean.temp,
-    spring.tot.precip = params_list$spring.tot.precip,
+    #spring.tot.precip = params_list$spring.tot.precip,
     prev_summer.mean.min.temp = params_list$prev_summer.mean.min.temp,
     parameter = params_list$parameter, 
     trt = params_list$trt)
@@ -538,13 +542,12 @@ base <- params |>
   filter(summer.mean.min.temp == 0,
          winter.mean.max.temp == 0,
          fall.mean.temp == 0,
-         spring.tot.precip == 0,
          prev_summer.mean.min.temp == 0)
 
 orig.pest    <- unique(base$pest)
 orig.recruit <- unique(base$recruit.size.mean)
 
-pest.values   <- sort(unique(c(seq(0.00001, 0.05, length.out = 200), orig.pest)))
+pest.values   <- sort(unique(c(seq(0.00001, 0.04, length.out = 200), orig.pest)))
 recruit.means <- sort(unique(c(seq(0.5, 3.5, length.out =20), orig.recruit)))
 
 # sweep 1: vary pest, recruit.size.mean stays original
@@ -588,7 +591,7 @@ bigmatrix <- function(params_list, mat.size){
   }) * h
 
   # Growth/survival
-  Tmat <- t(outer(y, y, P, params = params_list)) * h
+  Tmat <- (outer(y, y, P, params = params_list)) * h
 
   # Full kernel
   IPMmat <- Fmat + Tmat
@@ -626,12 +629,12 @@ orig.recruit <- 1.902475     # or use your orig.recruit object
   filter(sim == "pestab") |>
   ggplot(aes(pest, lambda, colour = trt)) +
   geom_line(linewidth = 1) +
-      scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   geom_hline(yintercept = 1, linetype = "dotted") +
       geom_vline(xintercept = 0.00905, linetype = "longdash", colour = "black") +
-  geom_vline(xintercept = orig.pest, linetype = "dashed", colour = "blue") +
+  geom_vline(xintercept = orig.pest, linetype = "dashed", colour = "lightblue") +
   labs(x = "Germination rate (pest)",
-       y = expression(lambda), colour = "Treatment") +
+       y = expression(lambda), colour = "") +
   theme_classic(base_size = 14))
 
 # Plot 2: recruit size sweep
@@ -639,14 +642,15 @@ orig.recruit <- 1.902475     # or use your orig.recruit object
   filter(sim == "recruit.size.mean") |>
   ggplot(aes(recruit.size.mean, lambda, colour = trt)) +
   geom_line(linewidth = 1) +
-      scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3"))+
+  scale_color_manual(values = c("#3088a3", "#9fb764", "#e54e21"))+
   geom_hline(yintercept = 1, linetype = "dotted") +
   geom_vline(xintercept = orig.recruit, linetype = "dashed", colour = "grey40") +
   labs(x = "Mean recruit size",
-       y = expression(lambda), colour = "Treatment") +
+       y = expression(lambda), colour = "") +
   theme_classic(base_size = 14))
 
-(sims <- p.pest + p.recruit + plot_layout(guides = "collect"))
+(sims <- p.pest + p.recruit + plot_layout(guides = "collect")&
+  theme(legend.position = "bottom"))
 ggsave(here("Figures", "Lomatium", "constant.parameter.simulations.png"), plot = sims, width = 12, height =6)
 
 ```
