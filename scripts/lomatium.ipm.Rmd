@@ -310,7 +310,6 @@ bigmatrix <- function(params_list, mat.size){
     summer.mean.min.temp = params_list$summer.mean.min.temp,
     winter.mean.max.temp = params_list$winter.mean.max.temp,
     fall.mean.temp = params_list$fall.mean.temp,
-    #spring.tot.precip = params_list$spring.tot.precip,
     prev_summer.mean.min.temp = params_list$prev_summer.mean.min.temp,
     trt = params_list$trt)
 

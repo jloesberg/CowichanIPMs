@@ -5,14 +5,18 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r packages}
-## Primula vital rates with climate data
+TO DO:
+- currently, all code works! Need to add the other SSP projections, right now this runs for just the one
 
+
+```{r packages}
 library(tidyverse)
 library(AICcmodavg)
 library(lme4)
 library(patchwork) #for putting plots into one
 library(popbio)
+library(here)
+library(glmmTMB)
 theme_set(theme_classic(base_size = 18)) #for ggplot
 ```
 
@@ -21,8 +25,8 @@ lom <- read.csv(here("clean_data", "Lomatium_Demography_Data_CLEANED_2016thru202
 climate <- read.csv(here("clean_data", "CGOP_climatevalues_scaled.csv"))
 climate<- climate %>%
   arrange(year) %>%
-  mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))%>% 
-  select(c(year, winter.mean.min.temp, prev_winter.mean.min.temp, summer.mean.max.temp, prev_summer.mean.max.temp, spring.mean.temp, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, ends_with("tot.precip")))
+  mutate(across(-year, ~lag(.x), .names = "prev_{.col}"))
+germ <- read.csv(here("clean_data", "Lomatium_seed_germination_rates.csv"))
 
 future.climate <- read.csv(here("clean_data", "CGOP_future_climate_values.csv"))
 
@@ -84,52 +88,36 @@ climate <- climate %>%
          year!= "2016")
 ```
 
-```{r best supported vital rate models}
-# gm.summer.av.temp.trt.int3 <- lmer(sizeT1 ~ size*summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = lom, REML = F)
-# fm.summer.av.temp.trt.int2 <- glmer(pflowerT1 ~ size + summer.mean.max.temp*trt + (1|Plot) + (1|Year), data = lom, family = "binomial")
-# sm.gs.precip.int <- glmer(psurvivalT1 ~ size *spring.tot.precip + (1|Plot) + (1|Year), data = lom, family = "binomial")
-# poisson.gs.av.temp.int <- glmer(No.umbels ~ size*spring.mean.temp + (1|Plot) + (1|Year), data = subset(lom, pflower == "1"), family = "poisson")
 
-# fm.summer.av.temp <- glmer(pflower ~ size + prev_summer.mean.max.temp + (1|Plot) + (1|Year), data = lom, family = "binomial")
-# gm.base.trt.int <- lmer(sizeT1 ~ size*trt + (1|Plot) + (1|Year), data = lom, REML = F)
-# sm.base.size <- glmer(psurvivalT1 ~ size + (1|Plot) + (1|Year), data = lom.survival, family = "binomial")
-# poisson.base.size <- glmer(No.umbels ~ size + (1|Plot) + (1|Year), data = subset(lom, pflower == "1"), family = "poisson")
-
-gm.base.trt.int <- lmer(sizeT1 ~ size*trt + (1|Plot) + (1|Year), data = lom, REML = F)
-fm.base.size <- glmer(pflower ~ size + (1|Plot) + (1|Year), data = lom, family = "binomial")
-sm.spf.int <- glmer(psurvivalT1 ~ size*prev_spring.mean.temp + fall.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
-ps.s.precip <- glmer(pseeds ~ size  + spring.tot.precip + (1|Plot) + (1|Year), data = seeds, family = "binomial")
-poisson.f.trt <- glmer.nb(no.seeds ~ size  + prev_fall.mean.temp + trt + (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0))
-```
 
 ```{r}
-#umbels to seedlings proxy:
-#panciles in year t is a function of the number of panicles in the plot in the year prior
-#so to get the transition rate: number of seedlings in t/#panciles year t-1 (PER PLOT - for now)
-plot_summary <- lom %>%
-  group_by(Plot, Year) %>%
-  summarise(
-    seedlings_t = sum(paste(plantid, Year) %in% 
-                      paste(lom.new$plantid, lom.new$Year)),
-    seeds_t = sum(no.seeds, na.rm = TRUE),
-    .groups = "drop") %>% 
-  drop_na()
-plot_summary <- plot_summary %>% 
-  arrange(Plot, Year) %>%
-  group_by(Plot) %>%
-  mutate(seeds_tminus1 = lag(seeds_t)) %>%
-  drop_na() %>% 
- # ungroup() %>% 
-  mutate(germ.rate = seedlings_t/seeds_tminus1) %>% 
-  filter(is.finite(germ.rate))
-#pest <- mean(plot_summary$germ.rate)/2 #coarse! but need to go through and look at where seeds vs seedlings were surveyed
-pest <- 0.00905 #from scott's fancy calculations
-#germ.rate = number of seedlings from each umbel (percapita
-
-pest.sd <- sd(plot_summary$germ.rate)
-min(plot_summary$germ.rate)
-max(plot_summary$germ.rate)
-#this is coarse! But ok for the first stab
+# #umbels to seedlings proxy:
+# #panciles in year t is a function of the number of panicles in the plot in the year prior
+# #so to get the transition rate: number of seedlings in t/#panciles year t-1 (PER PLOT - for now)
+# plot_summary <- lom %>%
+#   group_by(Plot, Year) %>%
+#   summarise(
+#     seedlings_t = sum(paste(plantid, Year) %in% 
+#                       paste(lom.new$plantid, lom.new$Year)),
+#     seeds_t = sum(no.seeds, na.rm = TRUE),
+#     .groups = "drop") %>% 
+#   drop_na()
+# plot_summary <- plot_summary %>% 
+#   arrange(Plot, Year) %>%
+#   group_by(Plot) %>%
+#   mutate(seeds_tminus1 = lag(seeds_t)) %>%
+#   drop_na() %>% 
+#  # ungroup() %>% 
+#   mutate(germ.rate = seedlings_t/seeds_tminus1) %>% 
+#   filter(is.finite(germ.rate))
+# #pest <- mean(plot_summary$germ.rate)/2 #coarse! but need to go through and look at where seeds vs seedlings were surveyed
+# pest <- 0.00905 #from scott's fancy calculations
+# #germ.rate = number of seedlings from each umbel (percapita
+# 
+# pest.sd <- sd(plot_summary$germ.rate)
+# min(plot_summary$germ.rate)
+# max(plot_summary$germ.rate)
+# #this is coarse! But ok for the first stab
 ```
 
 ```{r parameters , echo=FALSE}
@@ -137,7 +125,7 @@ max(plot_summary$germ.rate)
 # rows <- expand.grid(prev_spring.mean.temp = seq(-1, 1, by = 1),fall.mean.temp = seq(-1, 1, by = 1),prev_fall.mean.temp = seq(-1, 1, by = 1),spring.tot.precip = seq(-1, 1, by = 1), trt = c("control", "drought", "irrigated"))
 rows <- climate %>% 
   rename(Year = year) %>% 
-  select(Year, prev_spring.mean.temp, fall.mean.temp, prev_fall.mean.temp, spring.tot.precip) %>% 
+  select(Year, summer.mean.min.temp, winter.mean.max.temp, fall.mean.temp, prev_summer.mean.min.temp) %>% 
   expand_grid(
     trt = c("irrigated", "control", "drought"))
 #set up an empty parameter df
@@ -199,58 +187,12 @@ for (v in climate_vars) {
     )
   }
 }
-
-
-
-
-#adding in random effects
-#growth
-re_year_growth <- ranef(gm.base.trt.int)$Year %>%
-  rownames_to_column(var = "Year") %>%
-  rename(growth_re = `(Intercept)`)
-
-params <- params %>%
-  left_join(re_year_growth, by = "Year") #%>% 
-  #filter(!is.na(growth_re))
-
-#pflower
-re_year_pflower <- ranef(fm.base.size)$Year %>%
-  rownames_to_column(var = "Year") %>%
-  rename(pflower_re = `(Intercept)`)
-
-params <- params %>%
-  left_join(re_year_pflower, by = "Year") 
-
-#prob of making seeds
-re_year_pseeds <- ranef(ps.s.precip)$Year %>%
-  rownames_to_column(var = "Year") %>%
-  rename(pseeds_re = `(Intercept)`)
-
-params <- params %>%
-  left_join(re_year_pseeds, by = "Year") 
-
-#survival
-re_year_surv <- ranef(sm.spf.int)$Year %>%
-  rownames_to_column(var = "Year") %>%
-  rename(surv_re = `(Intercept)`)
-
-params <- params %>%
-  left_join(re_year_surv, by = "Year") 
-
-#no seeds
-re_year_noseeds <- ranef(poisson.f.trt)$Year %>%
-  rownames_to_column(var = "Year") %>%
-  rename(noseeds_re = `(Intercept)`)
-
-params <- params %>%
-  left_join(re_year_noseeds, by = "Year") 
-
  ### add in a average year for the SSD for the projections
 climate_cols <- c(
+  "summer.mean.min.temp",
+  "winter.mean.max.temp",
   "fall.mean.temp",
-  "prev_spring.mean.temp",
-  "prev_fall.mean.temp",
-  "spring.tot.precip"
+  "prev_summer.mean.min.temp"
 )
 
 base_row <- params[1:3, ]
@@ -263,99 +205,242 @@ base_row[climate_cols] <- 0
 
 params <- bind_rows(base_row, params)
 
+
+
+
+```
+
+```{r}
+### 1. Growth
+gm.s.min.temp.trt.int4 <- lmer(sizeT1 ~ size*trt + trt*summer.mean.min.temp + (1|Plot) + (1|Year), data = lom, REML = F)
+growth <- fixef(gm.s.min.temp.trt.int4)
+
+params <- params %>%
+  mutate(
+    growth.int = case_when(
+      trt == "irrigated" ~ growth["(Intercept)"] + growth["summer.mean.min.temp"]*summer.mean.min.temp,
+      trt == "control"   ~ growth["(Intercept)"] + growth["trtcontrol"]+ growth["summer.mean.min.temp"]*summer.mean.min.temp + growth["trtcontrol:summer.mean.min.temp"]*summer.mean.min.temp,
+      trt == "drought"   ~ growth["(Intercept)"] + growth["trtdrought"]+ growth["summer.mean.min.temp"]*summer.mean.min.temp + growth["trtdrought:summer.mean.min.temp"]*summer.mean.min.temp),
+    growth.slope = case_when(
+      trt == "irrigated" ~ growth["size"],
+      trt == "control"   ~ growth["size"] + growth["size:trtcontrol"],
+      trt == "drought"   ~ growth["size"] + growth["size:trtdrought"]))
+
+growth_var <- as.data.frame(VarCorr(gm.s.min.temp.trt.int4))
+params$growth.sd <- growth_var[growth_var$grp == "Residual", "sdcor"]
+
+### 2. pflower
+fm.wt.trt.int4 <- glmer(pflower ~ size*trt + trt*winter.mean.max.temp + (1|Plot) + (1|Year), data = lom, family = "binomial")
+flowering <- fixef(fm.wt.trt.int4)
+
+params <- params %>%
+  mutate(
+    pflow.int = case_when(
+      trt == "irrigated" ~ flowering["(Intercept)"] + flowering["winter.mean.max.temp"]*winter.mean.max.temp,
+      trt == "control"  ~ flowering["(Intercept)"] + flowering["trtcontrol"] + flowering["winter.mean.max.temp"]*winter.mean.max.temp + flowering["trtcontrol:winter.mean.max.temp"]*winter.mean.max.temp,
+      trt == "drought"  ~ flowering["(Intercept)"] + flowering["trtdrought"] + flowering["winter.mean.max.temp"]*winter.mean.max.temp + flowering["trtdrought:winter.mean.max.temp"]*winter.mean.max.temp),
+    pflow.slope = case_when(
+      trt == "irrigated" ~ flowering["size"],
+      trt == "control"   ~ flowering["size"] + flowering["size:trtcontrol"],
+      trt == "drought"   ~ flowering["size"] + flowering["size:trtdrought"]))
+
+### 3. survival
+sm.f.int2 <- glmer(psurvivalT1 ~ size + fall.mean.temp*trt + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
+survival <- fixef(sm.f.int2)
+
+params <- params %>%
+  mutate(
+    surv.slope = survival["size"],
+    surv.int = case_when(
+      trt == "irrigated" ~ survival["(Intercept)"] + survival["fall.mean.temp"] * fall.mean.temp,
+      trt == "control"   ~ survival["(Intercept)"] + survival["fall.mean.temp"] * fall.mean.temp +
+      survival["trtcontrol"] + survival["fall.mean.temp:trtcontrol"] * fall.mean.temp,
+      trt == "drought"   ~ survival["(Intercept)"] + survival["fall.mean.temp"] * fall.mean.temp +
+      survival["trtdrought"] + survival["fall.mean.temp:trtdrought"] * fall.mean.temp))
+
+
+### 4. pseeds
+ps.s.t.int <- glmer(pseeds ~ size*prev_summer.mean.min.temp + (1|Plot) + (1|Year), data = seeds, family = "binomial")
+pseeds <- fixef(ps.s.t.int)
+
+params <- params %>%
+  mutate(
+    pseeds.slope = pseeds["size"] +
+     pseeds["size:prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
+    pseeds.int = pseeds["(Intercept)"] +
+     pseeds["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp
+  )
+### 5. noseeds:
+poisson.s.trt3 <- glmmTMB(no.seeds ~ size*trt + prev_summer.mean.min.temp+ (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0), family = truncated_nbinom2)
+no.seeds <- fixef(poisson.s.trt3)
+
+no.seeds.coef <- fixef(poisson.s.trt3)$cond
+theta <- sigma(poisson.s.trt3)
+
+params <- params %>%
+  mutate(
+    no.seeds.int = case_when(
+      trt == "irrigated" ~ no.seeds.coef["(Intercept)"] +
+        no.seeds.coef["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
+      trt == "control"   ~ no.seeds.coef["(Intercept)"] + no.seeds.coef["trtcontrol"] +
+        no.seeds.coef["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp,
+      trt == "drought"   ~ no.seeds.coef["(Intercept)"] + no.seeds.coef["trtdrought"] +
+        no.seeds.coef["prev_summer.mean.min.temp"] * prev_summer.mean.min.temp),
+    no.seeds.slope = case_when(
+      trt == "irrigated" ~ no.seeds.coef["size"],
+      trt == "control"   ~ no.seeds.coef["size"] + no.seeds.coef["size:trtcontrol"],
+      trt == "drought"   ~ no.seeds.coef["size"] + no.seeds.coef["size:trtdrought"]),
+    no.seeds.theta = theta)
+
+#params$no.seeds <- no.seeds
+#params$pest <- 0.00696
+overall_germ <- germ$germ_rate[germ$Year == "overall.mean.germ"]
+
+params <- params %>%
+  mutate(
+    pest = germ$germ_rate[match(as.character(Year), as.character(germ$Year))],
+    pest = if_else(is.na(pest), overall_germ, pest)
+  )
+params$recruit.size.mean <- new_mean # mean new >1 leaf plant size
+params$recruit.size.sd<- new_sd # sd of new >1 leaf plant size
+
+
+###
+
+#adding in random effects
+#growth
+re_year_growth <- ranef(gm.s.min.temp.trt.int4)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(growth_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_growth, by = "Year") #%>% 
+  #filter(!is.na(growth_re))
+
+#pflower
+re_year_pflower <- ranef(fm.wt.trt.int4)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(pflower_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_pflower, by = "Year") 
+
+#prob of making seeds
+re_year_pseeds <- ranef(ps.s.t.int)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(pseeds_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_pseeds, by = "Year") 
+
+#survival
+re_year_surv <- ranef(sm.f.int2)$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(surv_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_surv, by = "Year") 
+
+#no seeds
+re_year_noseeds <- ranef(poisson.s.trt3)$cond$Year %>%
+  rownames_to_column(var = "Year") %>%
+  rename(noseeds_re = `(Intercept)`)
+
+params <- params %>%
+  left_join(re_year_noseeds, by = "Year") 
+
 #for any years without data, make 0 (average RE)
 params <- params %>%
   mutate(across(
       c(growth_re, pflower_re, pseeds_re,
         surv_re, noseeds_re),
       ~ tidyr::replace_na(., 0)))
+params <- params %>%
+  filter(Year!="2026")
 ```
 
 ```{r}
 ### 1. Growth
-#gm.base.trt.int <- lmer(sizeT1 ~ size*trt + (1|Plot) + (1|Year), data = lom, REML = F)
-growth <- fixef(gm.base.trt.int)
+# #gm.base.trt.int <- lmer(sizeT1 ~ size*trt + (1|Plot) + (1|Year), data = lom, REML = F)
+# growth <- fixef(gm.base.trt.int)
+# 
+# params <- params %>%
+#   mutate(
+#     growth.int = case_when(
+#       trt == "irrigated" ~ growth["(Intercept)"] + params$growth_re,
+#       trt == "control"   ~ growth["(Intercept)"] + growth["trtcontrol"] + params$growth_re,
+#       trt == "drought"   ~ growth["(Intercept)"] + growth["trtdrought"] + params$growth_re
+#     ),
+#     growth.slope = case_when(
+#       trt == "irrigated" ~ growth["size"],
+#       trt == "control"   ~ growth["size"] + growth["size:trtcontrol"],
+#       trt == "drought"   ~ growth["size"] + growth["size:trtdrought"]))
+# 
+# growth_var <- as.data.frame(VarCorr(gm.base.trt.int))
+# params$growth.sd <- growth_var[growth_var$grp == "Residual", "sdcor"]
+# 
+# ### 2. pflower
+# flowering <- fixef(fm.base.size)
+# 
+# params$pflow.int<- flowering["(Intercept)"] + params$pflower_re
+# #slope:
+# params$pflow.slope <- flowering["size"]
+# 
+# ### 3. survival
+# #sm.spf.int <- glmer(psurvivalT1 ~ size*prev_spring.mean.temp + fall.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
+# survival <- fixef(sm.spf.int)
+# 
+# params <- params %>%
+#   mutate(
+#     surv.slope = survival["size"] +
+#       survival["size:prev_spring.mean.temp"] * prev_spring.mean.temp,
+# 
+#     surv.int = survival["(Intercept)"] +
+#       survival["prev_spring.mean.temp"] * prev_spring.mean.temp +
+#       survival["fall.mean.temp"] * fall.mean.temp + params$surv_re
+#   )
+# 
+# 
+# ### 4. pseeds
+# #ps.s.precip <- glmer(pseeds ~ size  + spring.tot.precip + (1|Plot) + (1|Year), data = seeds, family = "binomial")
+# pseeds <- fixef(ps.s.precip)
+# 
+# params <- params %>%
+#   mutate(
+#     pseeds.slope = pseeds["size"],
+#     pseeds.int = pseeds["(Intercept)"] +
+#       pseeds["spring.tot.precip"] * spring.tot.precip + params$pseeds_re
+#   )
+# ### 5. noseeds:
+# #poisson.f.trt <- glmer.nb(no.seeds ~ size  + prev_fall.mean.temp + trt + (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0))
+# no.seeds <- fixef(poisson.f.trt)
+# 
+# params <- params %>%
+#   mutate(
+#     no.seeds.slope = no.seeds["size"],
+#     no.seeds.int = case_when(
+#       trt == "irrigated" ~
+#         no.seeds["(Intercept)"] +
+#         no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re,
+# 
+#       trt == "control" ~
+#         no.seeds["(Intercept)"] +
+#         no.seeds["trtcontrol"] +
+#         no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re,
+# 
+#       trt == "drought" ~
+#         no.seeds["(Intercept)"] +
+#         no.seeds["trtdrought"] +
+#         no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re
+#     )
+#   )
+# 
+# #params$no.seeds <- no.seeds
+# params$pest <- pest
+# params$recruit.size.mean <- new_mean # mean new >1 leaf plant size
+# params$recruit.size.sd<- new_sd # sd of new >1 leaf plant size
+# 
 
-params <- params %>%
-  mutate(
-    growth.int = case_when(
-      trt == "irrigated" ~ growth["(Intercept)"] + params$growth_re,
-      trt == "control"   ~ growth["(Intercept)"] + growth["trtcontrol"] + params$growth_re,
-      trt == "drought"   ~ growth["(Intercept)"] + growth["trtdrought"] + params$growth_re
-    ),
-    growth.slope = case_when(
-      trt == "irrigated" ~ growth["size"],
-      trt == "control"   ~ growth["size"] + growth["size:trtcontrol"],
-      trt == "drought"   ~ growth["size"] + growth["size:trtdrought"]
-    )
-  )
-
-growth_var <- as.data.frame(VarCorr(gm.base.trt.int))
-params$growth.sd <- growth_var[growth_var$grp == "Residual", "sdcor"]
-
-### 2. pflower
-flowering <- fixef(fm.base.size)
-
-params$pflow.int<- flowering["(Intercept)"] + params$pflower_re
-#slope:
-params$pflow.slope <- flowering["size"]
-
-### 3. survival
-#sm.spf.int <- glmer(psurvivalT1 ~ size*prev_spring.mean.temp + fall.mean.temp + (1|Plot) + (1|Year), data = lom.surv, family = "binomial")
-survival <- fixef(sm.spf.int)
-
-params <- params %>%
-  mutate(
-    surv.slope = survival["size"] +
-      survival["size:prev_spring.mean.temp"] * prev_spring.mean.temp,
-
-    surv.int = survival["(Intercept)"] +
-      survival["prev_spring.mean.temp"] * prev_spring.mean.temp +
-      survival["fall.mean.temp"] * fall.mean.temp + params$surv_re
-  )
-
-
-### 4. pseeds
-#ps.s.precip <- glmer(pseeds ~ size  + spring.tot.precip + (1|Plot) + (1|Year), data = seeds, family = "binomial")
-pseeds <- fixef(ps.s.precip)
-
-params <- params %>%
-  mutate(
-    pseeds.slope = pseeds["size"],
-    pseeds.int = pseeds["(Intercept)"] +
-      pseeds["spring.tot.precip"] * spring.tot.precip + params$pseeds_re
-  )
-### 5. noseeds:
-#poisson.f.trt <- glmer.nb(no.seeds ~ size  + prev_fall.mean.temp + trt + (1|Plot) + (1|Year), data = subset(seeds, no.seeds>0))
-no.seeds <- fixef(poisson.f.trt)
-
-params <- params %>%
-  mutate(
-    no.seeds.slope = no.seeds["size"],
-    no.seeds.int = case_when(
-      trt == "irrigated" ~
-        no.seeds["(Intercept)"] +
-        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re,
-
-      trt == "control" ~
-        no.seeds["(Intercept)"] +
-        no.seeds["trtcontrol"] +
-        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re,
-
-      trt == "drought" ~
-        no.seeds["(Intercept)"] +
-        no.seeds["trtdrought"] +
-        no.seeds["prev_fall.mean.temp"] * prev_fall.mean.temp + params$noseeds_re
-    )
-  )
-
-#params$no.seeds <- no.seeds
-params$pest <- pest
-params$recruit.size.mean <- new_mean # mean new >1 leaf plant size
-params$recruit.size.sd<- new_sd # sd of new >1 leaf plant size
-
-params <- params %>% 
-  filter(Year!="2026")
 ```
 
 ```{r}
@@ -409,14 +494,23 @@ ps.x <- function(x, params) {
 #   return(pf.x(x,params)*exp(params$no.flow.int+params$no.flow.slope*x)* params$pest)
 # }
 f.yx <- function(x, params) {
-  pf.x(x, params) * ps.x(x, params) * exp(params$no.seeds.int + params$no.seeds.slope * x) * params$pest
+  # expected seeds per seed-setting plant (zero-truncated negative binomial mean)
+  mu    <- exp(params$no.seeds.int + params$no.seeds.slope * x)
+  theta <- params$no.seeds.theta
+  p0    <- (theta / (theta + mu))^theta       # P(0 seeds) under the untruncated NB
+  seeds.given.seeds <- mu / (1 - p0)
+
+  pf.x(x, params) *            # probability of flowering
+    ps.x(x, params) *          # probability of producing seeds
+    seeds.given.seeds *        # expected number of seeds, given some are produced
+    params$pest                # establishment (seed to seedling)
 }
 ##so this should be outputting the number of seedlings made? Yes
 #f.yx(x = 4, params = params[1,])
 
 
 ##do big plants make a million seeds?
-exp(params$no.seeds.int+params$no.seeds.slope*5) 
+#exp(params$no.seeds.int+params$no.seeds.slope*5) 
 ## no they make a reasonable amount
 
 #SIZE DISTRIBUTION OF RECRUITS - so the ones going from the continuous into the continuous stage. 
@@ -457,7 +551,7 @@ bigmatrix <- function(params_list, mat.size){
   }) * h
 
   # Growth/survival
-  Tmat <- t(outer(y, y, P, params = params_list)) * h
+  Tmat <- (outer(y, y, P, params = params_list)) * h
 
   # Full kernel
   IPMmat <- Fmat + Tmat
@@ -472,12 +566,10 @@ bigmatrix <- function(params_list, mat.size){
     Year = params_list$Year,
     lambda = lambda(IPMmat),
     scenario = params_list$scenario,
-    prev_spring.mean.temp = params_list$prev_spring.mean.temp,
+    summer.mean.min.temp = params_list$summer.mean.min.temp,
+    winter.mean.max.temp = params_list$winter.mean.max.temp,
     fall.mean.temp = params_list$fall.mean.temp,
-    prev_fall.mean.temp = params_list$prev_fall.mean.temp,
-    spring.tot.precip = params_list$spring.tot.precip,
-    #spring.temp = params_list$spring.mean.temp,
-    #spring.tot.precip = params_list$spring.tot.precip,
+    prev_summer.mean.min.temp = params_list$prev_summer.mean.min.temp,
     trt = params_list$trt,
     kernel_id = params_list$kernel_id)
 
@@ -517,53 +609,54 @@ kernel_info <- params %>%
 
 (prev.sp <- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = prev_spring.mean.temp, y = lambda, color = trt)) +
+    ggplot(aes(x = summer.mean.min.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
+     geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
    geom_smooth(
     aes(color = trt, group = trt),
     method = "lm",
     se = F)+
      scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(x = "Previous spring mean temperature",
+  labs(x = "Summer min temperature, t",
     y = expression(lambda),
     color = ""))
 (wt.p <- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot( aes(x = fall.mean.temp, y = lambda, color = trt)) +
+    ggplot( aes(x = winter.mean.max.temp, y = lambda, color = trt)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
   geom_point(size = 2) +
     geom_smooth(
     aes(group = trt),
     method = "lm",
     se = F)+
-      scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(
-    x = "Fall mean temp",
-    y = expression(lambda),
-    color = "" ))
+    scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
+    labs(x = "Winter max temperature, t", y = expression(lambda), color = "" ))
 (sm.p <- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = prev_fall.mean.temp, y = lambda, color = trt)) +
+    ggplot(aes(x = fall.mean.temp, y = lambda, color = trt)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
   geom_point(size = 2) +
     geom_smooth(
     aes(group = trt),
     method = "lm",
     se = F)+
   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
-  labs(x = "Previous fall mean temp",
+  labs(x = "Fall mean temperature, t",
     y = expression(lambda),
     color = ""))
 
 (wt.t<- lom_lambda %>%
    filter(scenario == "current") |> 
-    ggplot(aes(x = spring.tot.precip, y = lambda, color = trt)) +
+    ggplot(aes(x = prev_summer.mean.min.temp, y = lambda, color = trt)) +
   geom_point(size = 2) +
+    geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
     geom_smooth(
     aes(group = trt),
     method = "lm",
     se = F)+
       scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
   labs(
-    x = "Spring total precip",
+    x = "Summer min temperature, t-1",
     y = expression(lambda),
     color = "" ))
 
@@ -583,6 +676,7 @@ kernel_info <- params %>%
 (yearly <- lom_lambda %>%
   ggplot(aes(x = Year, y = lambda, color = trt, group = trt)) +
   geom_line(size = 1.2) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
   geom_point(size = 1.2) +
   facet_wrap(~scenario)+
   scale_color_manual(values = c("#9fb764", "#e54e21", "#3088a3")) +
@@ -752,6 +846,7 @@ ggsave(here("Figures", "Lomatium", "STOCH_LAM_SCENARIOS.png"), plot = lam.s, wid
 
 
 ###
+#below is the year dependent approach - we decided not to use this...can ignore
 ```{r}
 kernel_info_current <- params %>%
   filter(scenario == "current") %>%
